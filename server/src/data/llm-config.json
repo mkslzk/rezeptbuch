@@ -1,0 +1,13 @@
+{
+  "provider": "ollama",
+  "ollama": {
+    "endpoint": "http://localhost:11434",
+    "model": "llama3.2",
+    "temperature": 0.1
+  },
+  "minimax": {
+    "apiKey": "",
+    "model": "MiniMax-Text-01",
+    "baseUrl": "https://api.minimax.chat/v1"
+  }
+}

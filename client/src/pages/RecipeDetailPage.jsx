@@ -1,0 +1,162 @@
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { getCategoryLabel } from '../config/categories.js';
+import RecipeFormModal from '../components/RecipeFormModal.jsx';
+
+export default function RecipeDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [recipe, setRecipe] = useState(null);
+  const [addingToMealPlan, setAddingToMealPlan] = useState(false);
+  const [showAddToMealPlan, setShowAddToMealPlan] = useState(false);
+  const [servingMultiplier, setServingMultiplier] = useState(1);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  useEffect(() => { fetchRecipe(); }, [id]);
+
+  function fetchRecipe() {
+    fetch('/recipe/api/recipes/${id}`)
+      .then(r => r.json())
+      .then(data => { setRecipe(data); setIsFavorite(Boolean(data.is_favorite)); })
+      .catch(console.error);
+  }
+
+  async function handleAddToMealPlan(day, meal) {
+    setAddingToMealPlan(true);
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekStr = weekStart.toISOString().split('T')[0];
+    try {
+      let res = await fetch('/recipe/api/meal-plans?week=${weekStr}`);
+      let plan = await res.json();
+      if (!plan || (Array.isArray(plan) && plan.length === 0)) {
+        res = await fetch('/recipe/api/meal-plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ week_start: weekStr }) });
+        plan = await res.json();
+      } else if (Array.isArray(plan)) { plan = plan[0]; }
+      res = await fetch('/recipe/api/meal-plans?week=${weekStr}`);
+      const planData = await res.json();
+      const existingPlan = Array.isArray(planData) ? planData[0] : planData;
+      const entriesRes = await fetch('/recipe/api/meal-plans/${existingPlan.id}/entries`);
+      const entriesData = await entriesRes.json();
+      const entries = Array.isArray(entriesData) ? entriesData : [];
+      entries.push({ day_of_week: day, meal_type: meal, recipe_id: parseInt(id) });
+      await fetch('/recipe/api/meal-plans/${existingPlan.id}/entries`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }) });
+      setShowAddToMealPlan(false);
+      alert('Rezept zum Essensplan hinzugefügt! 🍳');
+    } catch (err) { alert('Fehler: ' + err.message); }
+    setAddingToMealPlan(false);
+  }
+
+  async function handleDelete() {
+    if (!confirm('Rezept wirklich löschen?')) return;
+    await fetch('/recipe/api/recipes/${id}`, { method: 'DELETE' });
+    navigate('/');
+  }
+
+  async function toggleFavorite() {
+    try {
+      const res = await fetch('/recipe/api/recipes/${id}/favorite`, { method: 'PATCH' });
+      const data = await res.json();
+      setIsFavorite(Boolean(data.is_favorite));
+    } catch (err) { console.error('Failed to toggle favorite:', err); }
+  }
+
+  async function handleDuplicate() {
+    if (!recipe) return;
+    const payload = {
+      title: recipe.title + ' (Kopie)', description: recipe.description, image_url: recipe.image_url,
+      category: recipe.category, servings: recipe.servings, prep_time: recipe.prep_time,
+      cook_time: recipe.cook_time, source_url: recipe.source_url,
+      ingredients: typeof recipe.ingredients === 'string' ? JSON.parse(recipe.ingredients) : recipe.ingredients,
+      steps: typeof recipe.steps === 'string' ? JSON.parse(recipe.steps) : recipe.steps,
+      tags: typeof recipe.tags === 'string' ? JSON.parse(recipe.tags) : recipe.tags
+    };
+    try {
+      const res = await fetch('/recipe/api/recipes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const result = await res.json();
+      navigate(`/recipe/${result.id}`);
+    } catch (err) { alert('Duplizieren fehlgeschlagen'); }
+  }
+
+  if (!recipe) return <div className="loading">Lädt...</div>;
+  let ingredients = [], steps = [], tags = [];
+  try { ingredients = JSON.parse(recipe.ingredients); } catch {}
+  try { steps = JSON.parse(recipe.steps); } catch {}
+  try { tags = JSON.parse(recipe.tags); } catch {}
+  const totalTime = (recipe.prep_time || 0) + (recipe.cook_time || 0);
+
+  return (
+    <div className="recipe-detail">
+      <div className="detail-header">
+        <Link to="/" className="back-link">← Zurück</Link>
+        <div className="detail-actions">
+          <button className={`btn btn-favorite ${isFavorite ? 'active' : ''}`} onClick={toggleFavorite}>{isFavorite ? '★' : '☆'}</button>
+          <button className="btn btn-accent" onClick={() => setShowAddToMealPlan(!showAddToMealPlan)}>📅 Zu Essensplan</button>
+          <button className="btn btn-secondary" onClick={handleDuplicate}>📋 Duplizieren</button>
+          <button className="btn btn-secondary" onClick={() => setShowEditModal(true)}>✏️ Bearbeiten</button>
+          <button className="btn btn-danger" onClick={handleDelete}>🗑 Löschen</button>
+        </div>
+        {showAddToMealPlan && (
+          <div className="add-to-plan-dropdown">
+            <p className="dropdown-title">Zu welchem Tag hinzufügen?</p>
+            {['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'].map((day, idx) => (
+              <div key={day} className="dropdown-meal-row">
+                <span className="dropdown-day">{day}</span>
+                <button onClick={() => handleAddToMealPlan(idx, 'lunch')} disabled={addingToMealPlan}>🍽 Mittag</button>
+                <button onClick={() => handleAddToMealPlan(idx, 'dinner')} disabled={addingToMealPlan}>🍳 Abend</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {recipe.image_url && <img src={recipe.image_url} alt={recipe.title} className="detail-image" />}
+      <div className="detail-body">
+        <h1>{recipe.title}</h1>
+        {recipe.category && <span className="detail-category">{getCategoryLabel(recipe.category) || recipe.category}</span>}
+        {recipe.description && <p className="detail-description">{recipe.description}</p>}
+        {totalTime > 0 && (
+          <div className="time-progress-section">
+            <h3>⏱ Zeitaufwand</h3>
+            <div className="time-progress-bar">
+              <div className="time-bar-track">
+                <div className="time-bar-fill prep" style={{width: `${(recipe.prep_time || 0) / totalTime * 100}%`}} />
+                <div className="time-bar-fill cook" style={{width: `${(recipe.cook_time || 0) / totalTime * 100}%`}} />
+              </div>
+              <div className="time-bar-labels">
+                <span className="time-label prep-label">⏱ Prep: {recipe.prep_time || 0} Min.</span>
+                <span className="time-label cook-label">🍳 Kochen: {recipe.cook_time || 0} Min.</span>
+                <span className="time-label total-label">⏰ Gesamt: {totalTime} Min.</span>
+              </div>
+            </div>
+          </div>
+        )}
+        {recipe.servings && (
+          <div className="servings-adjuster">
+            <span className="servings-label">🍽 Portionen:</span>
+            <button onClick={() => setServingMultiplier(Math.max(0.5, servingMultiplier - 0.5))}>−</button>
+            <span className="servings-count">{Math.round(recipe.servings * servingMultiplier)}</span>
+            <button onClick={() => setServingMultiplier(servingMultiplier + 0.5)}>+</button>
+            {servingMultiplier !== 1 && <button className="reset-btn" onClick={() => setServingMultiplier(1)}>↺</button>}
+          </div>
+        )}
+        {tags.length > 0 && <div className="detail-tags">{tags.map(t => <span key={t} className="tag">{t}</span>)}</div>}
+        <div className="detail-sections">
+          <div className="ingredients-section">
+            <h2>Zutaten</h2>
+            <ul className="ingredients-list">{ingredients.map((ing, i) => (
+              <li key={i} className="ingredient-item"><span className="ing-amount">{ing.amount} {ing.unit}</span><span className="ing-item">{ing.item}</span></li>
+            ))}</ul>
+          </div>
+          <div className="steps-section">
+            <h2>Zubereitung</h2>
+            <ol className="steps-list">{steps.map((step, i) => <li key={i}>{step}</li>)}</ol>
+          </div>
+        </div>
+        {recipe.source_url && <div className="source-link"><a href={recipe.source_url} target="_blank" rel="noopener noreferrer">Quelle: {recipe.source_url}</a></div>}
+      </div>
+      <RecipeFormModal isOpen={showEditModal} onClose={() => setShowEditModal(false)} onSaved={() => { fetchRecipe(); setShowEditModal(false); }} initialData={recipe} />
+    </div>
+  );
+}

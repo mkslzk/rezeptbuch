@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+client/dist/
+server/dist/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# Database (SQLite — contains user data)
+server/src/data/*.db
+server/src/data/*.db-journal
+server/src/data/*.db-wal
+server/src/data/*.db-shm
+
+# Uploads (user-uploaded content, do NOT commit binaries)
+server/src/data/uploads/
+!server/src/data/uploads/.gitkeep
+
+# Tesseract training data (large, downloaded at build time)
+server/deu.traineddata
+server/*.traineddata
+
+# Local offer cache
+server/src/data/offers-cache.json
+server/src/data/products-cache.json
+
+# Temporary test artifacts
+/tmp/
+.cache/
+coverage/
+
+# Local config overrides
+server/src/data/llm-config.local.json
+server/src/data/offers-config.local.json
+
+# Backup files (legacy)
+*.bak
+*.bak.*
+test-import-sites.cjs
+
+# Legacy build artifacts & test scripts (pre-2026)
+server/src/static/
+server/src/workers/
+server/test-*.js
+test-import-sites.cjs

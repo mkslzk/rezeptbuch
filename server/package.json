@@ -1,0 +1,24 @@
+{
+  "name": "rezeptbuch-server",
+  "version": "1.0.0",
+  "description": "Rezeptbuch Backend API",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.2.1",
+    "express": "^4.18.2",
+    "multer": "^2.1.1",
+    "playwright": "^1.60.0",
+    "playwright-extra": "^4.3.6",
+    "playwright-stealth": "^0.0.1",
+    "puppeteer-core": "^24.43.1",
+    "tesseract.js": "^7.0.0"
+  }
+}

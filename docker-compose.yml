@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  rezeptbuch:
+    build: .
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/app/server/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    restart: unless-stopped
