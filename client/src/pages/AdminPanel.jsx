@@ -39,6 +39,14 @@ function formatDate(dateStr) {
   return new Date(dateStr).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+// Extracts the date from a revision identifier like "r001_2026-05-17" → "17.05.2026"
+function formatRevisionDate(rev) {
+  if (!rev || typeof rev !== 'string') return '-';
+  const m = rev.match(/(\d{4}-\d{2}-\d{2})/);
+  if (!m) return rev;
+  return new Date(m[1]).toLocaleDateString('de-DE', { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
 function formatPrice(price) {
   if (typeof price === 'string') price = parseFloat(price);
   return isNaN(price) ? '-' : `€${price.toFixed(2)}`;
@@ -678,8 +686,8 @@ export default function AdminPanel() {
             <div className="off-status-label">Deutsche Produkte</div>
           </div>
           <div className="off-status-card">
-            <div className="off-status-value">{status?.currentRevision ?? '-'}</div>
-            <div className="off-status-label">Aktuelle Revision</div>
+            <div className="off-status-value">{formatRevisionDate(status?.currentRevision)}</div>
+            <div className="off-status-label">Letztes Update</div>
           </div>
           <div className="off-status-card">
             <div className="off-status-value">{status?.totalRevisions ?? 0}</div>
@@ -699,10 +707,14 @@ export default function AdminPanel() {
           )}
         </div>
 
-        {progress && <ProgressBar progress={progress} />}
+        {progress && (progress.status === 'running' || progress.stage === 'start') && (
+          <ProgressBar progress={progress} />
+        )}
 
         {progress?.status === 'done' && (
-          <div className="off-success-msg">✅ Update abgeschlossen - {progress.message}</div>
+          <div className="off-success-msg">
+            ✅ Letztes Update: {formatRevisionDate(progress.revision)} - {progress.message}
+          </div>
         )}
 
         <div className="off-actions">
