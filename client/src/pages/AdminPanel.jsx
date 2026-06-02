@@ -35,13 +35,13 @@ function formatBytes(bytes) {
 }
 
 function formatDate(dateStr) {
-  if (!dateStr) return '—';
+  if (!dateStr) return '-';
   return new Date(dateStr).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function formatPrice(price) {
   if (typeof price === 'string') price = parseFloat(price);
-  return isNaN(price) ? '–' : `€${price.toFixed(2)}`;
+  return isNaN(price) ? '-' : `€${price.toFixed(2)}`;
 }
 
 const STAGE_LABELS = {
@@ -97,9 +97,9 @@ function ChangeItem({ change }) {
           {Object.entries(change.changes).map(([field, { old: oldVal, new: newVal }]) => (
             <div key={field} className="change-field">
               <span className="field-name">{field}:</span>
-              <span className="field-old">{oldVal || '—'}</span>
+              <span className="field-old">{oldVal || '-'}</span>
               <span className="field-arrow">→</span>
-              <span className="field-new">{newVal || '—'}</span>
+              <span className="field-new">{newVal || '-'}</span>
             </div>
           ))}
         </div>
@@ -194,15 +194,15 @@ function OffersDataView() {
       <div className="admin-offers-header">
         <div className="offers-header-row">
           <div className="header-cell">
-            <span className="cell-value">{overview?.totalOffers?.toLocaleString('de-DE') ?? '–'}</span>
+            <span className="cell-value">{overview?.totalOffers?.toLocaleString('de-DE') ?? '-'}</span>
             <span className="cell-label">Angebote</span>
           </div>
           <div className="header-cell">
-            <span className="cell-value">{overview?.uniqueProducts?.toLocaleString('de-DE') ?? '–'}</span>
+            <span className="cell-value">{overview?.uniqueProducts?.toLocaleString('de-DE') ?? '-'}</span>
             <span className="cell-label">Eindeutige Produkte</span>
           </div>
           <div className="header-cell">
-            <span className="cell-value">{overview?.lastScrape ? new Date(overview.lastScrape.scraped_at).toLocaleDateString('de-DE') : '–'}</span>
+            <span className="cell-value">{overview?.lastScrape ? new Date(overview.lastScrape.scraped_at).toLocaleDateString('de-DE') : '-'}</span>
             <span className="cell-label">Letzter Scrape</span>
           </div>
         </div>
@@ -292,7 +292,7 @@ function OffersDataView() {
                 <div key={i} className="result-item">
                   <span className="result-name">{r.product_name}</span>
                   <span className="store-badge">{STORE_LABELS[r.store] || r.store}</span>
-                  <span className="price-range">{formatPrice(r.min_price)} – {formatPrice(r.max_price)}</span>
+                  <span className="price-range">{formatPrice(r.min_price)} - {formatPrice(r.max_price)}</span>
                   <span className="seen-count">{r.seen_count}×</span>
                 </div>
               )) : <p className="empty-text">Keine Ergebnisse</p>}
@@ -320,7 +320,7 @@ function OffersDataView() {
                   <span>{s.unique_products?.toLocaleString()} eindeutig</span>
                 </div>
                 <div className="store-card-dates">
-                  {new Date(s.first_seen).toLocaleDateString('de-DE')} – {new Date(s.last_seen).toLocaleDateString('de-DE')}
+                  {new Date(s.first_seen).toLocaleDateString('de-DE')} - {new Date(s.last_seen).toLocaleDateString('de-DE')}
                 </div>
               </div>
             ))}
@@ -370,7 +370,7 @@ function AllOffersView() {
                 <td><span className="product-name-cell">{o.product_name}</span>{o.brand && <span className="product-brand">{o.brand}</span>}</td>
                 <td><span className="store-badge">{STORE_LABELS[o.store] || o.store}</span></td>
                 <td className="price-cell">{formatPrice(o.price)}</td>
-                <td>{o.url ? <a href={o.url} target="_blank" rel="noopener">🔗</a> : '–'}</td>
+                <td>{o.url ? <a href={o.url} target="_blank" rel="noopener">🔗</a> : '-'}</td>
                 <td>{new Date(o.scraped_at).toLocaleDateString('de-DE')}</td>
               </tr>
             ))}
@@ -422,7 +422,7 @@ function ChartView() {
                 {storeData.map((d, i) => (
                   <div key={i} className="chart-bar"
                     style={{ height: `${Math.max(10, (d.avg_price / maxP) * 100)}%` }}
-                    title={`${formatPrice(d.min_price)} – ${formatPrice(d.max_price)}`}
+                    title={`${formatPrice(d.min_price)} - ${formatPrice(d.max_price)}`}
                   />
                 ))}
               </div>
@@ -483,11 +483,11 @@ function OffersHistoryView() {
       <div className="admin-offers-header">
         <div className="offers-header-row">
           <div className="header-cell">
-            <span className="cell-value">{overview?.totalRecords ?? '–'}</span>
+            <span className="cell-value">{overview?.totalRecords ?? '-'}</span>
             <span className="cell-label">Scrapes gesamt</span>
           </div>
           <div className="header-cell">
-            <span className="cell-value">{overview?.totalOffers?.toLocaleString('de-DE') ?? '–'}</span>
+            <span className="cell-value">{overview?.totalOffers?.toLocaleString('de-DE') ?? '-'}</span>
             <span className="cell-label">Angebote</span>
           </div>
         </div>
@@ -550,7 +550,7 @@ function OffersHistoryView() {
                         <td><span className="product-name-cell">{o.product_name}</span></td>
                         <td><span className="store-badge">{STORE_LABELS[o.store] || o.store}</span></td>
                         <td className="price-cell">{formatPrice(o.price)}</td>
-                        <td>{o.url ? <a href={o.url} target="_blank" rel="noopener">🔗</a> : '–'}</td>
+                        <td>{o.url ? <a href={o.url} target="_blank" rel="noopener">🔗</a> : '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -669,11 +669,11 @@ export default function AdminPanel() {
       <Section title="📦 OpenFoodFacts Datenbank" icon="📦" defaultOpen={true}>
         <div className="off-status-grid">
           <div className="off-status-card">
-            <div className="off-status-value">{status?.currentProducts?.toLocaleString('de-DE') ?? '—'}</div>
+            <div className="off-status-value">{status?.currentProducts?.toLocaleString('de-DE') ?? '-'}</div>
             <div className="off-status-label">Deutsche Produkte</div>
           </div>
           <div className="off-status-card">
-            <div className="off-status-value">{status?.currentRevision ?? '—'}</div>
+            <div className="off-status-value">{status?.currentRevision ?? '-'}</div>
             <div className="off-status-label">Aktuelle Revision</div>
           </div>
           <div className="off-status-card">
@@ -697,7 +697,7 @@ export default function AdminPanel() {
         {progress && <ProgressBar progress={progress} />}
 
         {progress?.status === 'done' && (
-          <div className="off-success-msg">✅ Update abgeschlossen – {progress.message}</div>
+          <div className="off-success-msg">✅ Update abgeschlossen - {progress.message}</div>
         )}
 
         <div className="off-actions">
