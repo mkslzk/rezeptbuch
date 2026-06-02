@@ -130,7 +130,7 @@ export default function RecipeFormModal({ isOpen, onClose, onSaved, initialData 
 
     try {
       const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? '/recipe/api/recipes/${initialData.id}` : '/recipe/api/recipes';
+      const url = isEditing ? `/recipe/api/recipes/${initialData.id}` : '/recipe/api/recipes';
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },

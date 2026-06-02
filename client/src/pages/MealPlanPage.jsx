@@ -46,7 +46,7 @@ export default function MealPlanPage() {
 
   function loadPlan() {
     const weekStr = toDateStr(weekStart);
-    fetch('/recipe/api/meal-plans?week=${weekStr}`)
+    fetch(`/recipe/api/meal-plans?week=${weekStr}`)
       .then(r => r.json())
       .then(data => {
         if (data && !Array.isArray(data) && data.id) {
@@ -77,7 +77,7 @@ export default function MealPlanPage() {
     const lastWeekStr = lastWeekStart.toISOString().split('T')[0];
     
     try {
-      const res = await fetch('/recipe/api/meal-plans?week=${lastWeekStr}`);
+      const res = await fetch(`/recipe/api/meal-plans?week=${lastWeekStr}`);
       const lastPlan = await res.json();
       
       if (!lastPlan || (Array.isArray(lastPlan) && lastPlan.length === 0)) {
@@ -87,7 +87,7 @@ export default function MealPlanPage() {
       
       const planToCopy = Array.isArray(lastPlan) ? lastPlan[0] : lastPlan;
       
-      const entriesRes = await fetch('/recipe/api/meal-plans/${planToCopy.id}/entries`);
+      const entriesRes = await fetch(`/recipe/api/meal-plans/${planToCopy.id}/entries`);
       const entriesData = await entriesRes.json();
       const oldEntries = Array.isArray(entriesData) ? entriesData : [];
       
@@ -104,7 +104,7 @@ export default function MealPlanPage() {
         recipe_id: e.recipe_id
       }));
       
-      await fetch('/recipe/api/meal-plans/${newPlan.id}/entries`, {
+      await fetch(`/recipe/api/meal-plans/${newPlan.id}/entries`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries: allEntries })
@@ -154,7 +154,7 @@ export default function MealPlanPage() {
       return { day_of_week: parseInt(d), meal_type: m, recipe_id: v.recipe_id };
     });
 
-    await fetch('/recipe/api/meal-plans/${p.id}/entries`, {
+    await fetch(`/recipe/api/meal-plans/${p.id}/entries`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ entries: allEntries })
@@ -186,7 +186,7 @@ export default function MealPlanPage() {
         const [d, m] = k.split('_');
         return { day_of_week: parseInt(d), meal_type: m, recipe_id: v.recipe_id };
       });
-      await fetch('/recipe/api/meal-plans/${plan.id}/entries`, {
+      await fetch(`/recipe/api/meal-plans/${plan.id}/entries`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries: allEntries })

@@ -40,7 +40,7 @@ export default function RecipeFormPage() {
 
   useEffect(() => {
     if (id && id !== 'new') {
-      fetch('/recipe/api/recipes/${id}`)
+      fetch(`/recipe/api/recipes/${id}`)
         .then(r => r.json())
         .then(recipe => {
           setForm({
@@ -227,7 +227,7 @@ export default function RecipeFormPage() {
 
     try {
       const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? '/recipe/api/recipes/${id}` : '/recipe/api/recipes';
+      const url = isEditing ? `/recipe/api/recipes/${id}` : '/recipe/api/recipes';
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },

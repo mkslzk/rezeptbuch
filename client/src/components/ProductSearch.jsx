@@ -36,7 +36,7 @@ export default function ProductSearch({
       
       try {
         // Fetch learned products from server
-        const learnedRes = await fetch('/recipe/api/learning?q=${encodeURIComponent(query)}&limit=15`);
+        const learnedRes = await fetch(`/recipe/api/learning?q=${encodeURIComponent(query)}&limit=15`);
         let learnedProducts = [];
         if (learnedRes.ok) {
           const learnedData = await learnedRes.json();
@@ -44,7 +44,7 @@ export default function ProductSearch({
         }
         
         // Fetch from OFF API
-        const offRes = await fetch('/recipe/api/products/search?q=${encodeURIComponent(query)}&limit=15`);
+        const offRes = await fetch(`/recipe/api/products/search?q=${encodeURIComponent(query)}&limit=15`);
         if (!offRes.ok) throw new Error('OFF search failed');
         const offData = await offRes.json();
         const offProducts = offData.products || [];

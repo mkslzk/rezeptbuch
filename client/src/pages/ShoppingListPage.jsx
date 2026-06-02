@@ -252,7 +252,7 @@ export default function ShoppingListPage() {
     setSelectedPlanId(planId);
     
     try {
-      const res = await fetch('/recipe/api/shopping-lists?meal_plan_id=${planId}`);
+      const res = await fetch(`/recipe/api/shopping-lists?meal_plan_id=${planId}`);
       const existingList = await res.json();
       if (existingList && existingList.id) {
         setList(existingList);
@@ -281,7 +281,7 @@ export default function ShoppingListPage() {
       return;
     }
     try {
-      const res = await fetch('/recipe/api/shopping-lists?meal_plan_id=${id}`);
+      const res = await fetch(`/recipe/api/shopping-lists?meal_plan_id=${id}`);
       const data = await res.json();
       if (data) {
         setList(data);
@@ -303,7 +303,7 @@ export default function ShoppingListPage() {
   async function handleGenerate() {
     if (!selectedPlanId || !list) return;
     try {
-      const res = await fetch('/recipe/api/shopping-lists/${list.id}/generate`, { method: 'POST' });
+      const res = await fetch(`/recipe/api/shopping-lists/${list.id}/generate`, { method: 'POST' });
       const updated = await res.json();
       setItems(updated.items || []);
     } catch {}
@@ -321,7 +321,7 @@ export default function ShoppingListPage() {
   async function toggleItem(itemId, checked) {
     if (!list) return;
     try {
-      await fetch('/recipe/api/shopping-lists/${list.id}/items/${itemId}`, {
+      await fetch(`/recipe/api/shopping-lists/${list.id}/items/${itemId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ checked: checked ? 1 : 0 })
@@ -334,7 +334,7 @@ export default function ShoppingListPage() {
     if (!list) return;
     if (!window.confirm('Eintrag löschen?')) return;
     try {
-      await fetch('/recipe/api/shopping-lists/${list.id}/items/${itemId}`, { method: 'DELETE' });
+      await fetch(`/recipe/api/shopping-lists/${list.id}/items/${itemId}`, { method: 'DELETE' });
       setItems(items.filter(i => i.id !== itemId));
     } catch (err) {
       console.error('Failed to delete item:', err);
@@ -344,7 +344,7 @@ export default function ShoppingListPage() {
   async function updateItem(itemId, updates) {
     if (!list) return;
     try {
-      const res = await fetch('/recipe/api/shopping-lists/${list.id}/items/${itemId}`, {
+      const res = await fetch(`/recipe/api/shopping-lists/${list.id}/items/${itemId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -360,7 +360,7 @@ export default function ShoppingListPage() {
     e.preventDefault();
     if (!newItem.item.trim()) return;
     try {
-      const res = await fetch('/recipe/api/shopping-lists/${list.id}/items`, {
+      const res = await fetch(`/recipe/api/shopping-lists/${list.id}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newItem)
@@ -377,7 +377,7 @@ export default function ShoppingListPage() {
     if (!window.confirm(`Alle ${items.length} Einträge löschen?`)) return;
     try {
       await Promise.all(items.map(item => 
-        fetch('/recipe/api/shopping-lists/${list.id}/items/${item.id}`, { method: 'DELETE' })
+        fetch(`/recipe/api/shopping-lists/${list.id}/items/${item.id}`, { method: 'DELETE' })
       ));
       setItems([]);
     } catch (err) {

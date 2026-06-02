@@ -39,7 +39,7 @@ export default function HomePage() {
     try {
       const params = new URLSearchParams();
       if (query) params.append('q', query);
-      const res = await fetch('/recipe/api/search?${params}`);
+      const res = await fetch(`/recipe/api/search?${params}`);
       let data = await res.json();
       if (selectedCategory) {
         data = data.filter(r => r.category === selectedCategory);
@@ -56,7 +56,7 @@ export default function HomePage() {
       fetchRecipes();
       return;
     }
-    fetch('/recipe/api/search?q=${encodeURIComponent(cat)}`)
+    fetch(`/recipe/api/search?q=${encodeURIComponent(cat)}`)
       .then(r => r.json())
       .then(data => setRecipes(data));
   }
