@@ -34,6 +34,8 @@ export function initDb() {
       cook_time INTEGER,
       source_url TEXT,
       is_favorite INTEGER DEFAULT 0,
+      rating REAL DEFAULT 0,
+      rating_count INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -87,6 +89,18 @@ export function initDb() {
   // Add is_favorite column if it doesn't exist (for existing databases)
   try {
     db.exec("ALTER TABLE recipes ADD COLUMN is_favorite INTEGER DEFAULT 0");
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  // Add rating columns if they don't exist (for existing databases)
+  try {
+    db.exec("ALTER TABLE recipes ADD COLUMN rating REAL DEFAULT 0");
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  try {
+    db.exec("ALTER TABLE recipes ADD COLUMN rating_count INTEGER DEFAULT 0");
   } catch (e) {
     // Column already exists, ignore
   }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getCategoryLabel } from '../config/categories.js';
 import RecipeFormModal from '../components/RecipeFormModal.jsx';
+import { scaleAmount, scalingBadge } from '../utils/scaling.js';
 
 export default function RecipeDetailPage() {
   const { id } = useParams();
@@ -12,11 +13,12 @@ export default function RecipeDetailPage() {
   const [servingMultiplier, setServingMultiplier] = useState(1);
   const [isFavorite, setIsFavorite] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [hoverRating, setHoverRating] = useState(0);
 
   useEffect(() => { fetchRecipe(); }, [id]);
 
   function fetchRecipe() {
-    fetch('/recipe/api/recipes/${id}`)
+    fetch(`/recipe/api/recipes/${id}`)
       .then(r => r.json())
       .then(data => { setRecipe(data); setIsFavorite(Boolean(data.is_favorite)); })
       .catch(console.error);
@@ -29,20 +31,20 @@ export default function RecipeDetailPage() {
     weekStart.setHours(0, 0, 0, 0);
     const weekStr = weekStart.toISOString().split('T')[0];
     try {
-      let res = await fetch('/recipe/api/meal-plans?week=${weekStr}`);
+      let res = await fetch(`/recipe/api/meal-plans?week=${weekStr}`);
       let plan = await res.json();
       if (!plan || (Array.isArray(plan) && plan.length === 0)) {
         res = await fetch('/recipe/api/meal-plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ week_start: weekStr }) });
         plan = await res.json();
       } else if (Array.isArray(plan)) { plan = plan[0]; }
-      res = await fetch('/recipe/api/meal-plans?week=${weekStr}`);
+      res = await fetch(`/recipe/api/meal-plans?week=${weekStr}`);
       const planData = await res.json();
       const existingPlan = Array.isArray(planData) ? planData[0] : planData;
-      const entriesRes = await fetch('/recipe/api/meal-plans/${existingPlan.id}/entries`);
+      const entriesRes = await fetch(`/recipe/api/meal-plans/${existingPlan.id}/entries`);
       const entriesData = await entriesRes.json();
       const entries = Array.isArray(entriesData) ? entriesData : [];
       entries.push({ day_of_week: day, meal_type: meal, recipe_id: parseInt(id) });
-      await fetch('/recipe/api/meal-plans/${existingPlan.id}/entries`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }) });
+      await fetch(`/recipe/api/meal-plans/${existingPlan.id}/entries`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }) });
       setShowAddToMealPlan(false);
       alert('Rezept zum Essensplan hinzugefügt! 🍳');
     } catch (err) { alert('Fehler: ' + err.message); }
@@ -51,16 +53,30 @@ export default function RecipeDetailPage() {
 
   async function handleDelete() {
     if (!confirm('Rezept wirklich löschen?')) return;
-    await fetch('/recipe/api/recipes/${id}`, { method: 'DELETE' });
+    await fetch(`/recipe/api/recipes/${id}`, { method: 'DELETE' });
     navigate('/');
   }
 
   async function toggleFavorite() {
     try {
-      const res = await fetch('/recipe/api/recipes/${id}/favorite`, { method: 'PATCH' });
+      const res = await fetch(`/recipe/api/recipes/${id}/favorite`, { method: 'PATCH' });
       const data = await res.json();
       setIsFavorite(Boolean(data.is_favorite));
     } catch (err) { console.error('Failed to toggle favorite:', err); }
+  }
+
+  async function setRating(value) {
+    try {
+      const res = await fetch(`/recipe/api/recipes/${id}/rating`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: value })
+      });
+      const data = await res.json();
+      if (data.rating != null) {
+        setRecipe(prev => ({ ...prev, rating: data.rating, rating_count: data.rating_count }));
+      }
+    } catch (err) { console.error('Failed to set rating:', err); }
   }
 
   async function handleDuplicate() {
@@ -93,6 +109,12 @@ export default function RecipeDetailPage() {
         <Link to="/" className="back-link">← Zurück</Link>
         <div className="detail-actions">
           <button className={`btn btn-favorite ${isFavorite ? 'active' : ''}`} onClick={toggleFavorite}>{isFavorite ? '★' : '☆'}</button>
+          <div className="rating-stars" onMouseLeave={() => setHoverRating(0)}>
+            {[1, 2, 3, 4, 5].map(n => (
+              <button key={n} className={`star-btn ${(hoverRating || recipe.rating || 0) >= n ? 'active' : ''}`} onMouseEnter={() => setHoverRating(n)} onClick={() => setRating(n)} title={`${n} Stern${n > 1 ? 'e' : ''}`}>{(hoverRating || recipe.rating || 0) >= n ? '★' : '☆'}</button>
+            ))}
+            {recipe.rating_count > 0 && <span className="rating-count" title={`${recipe.rating_count} Bewertung${recipe.rating_count > 1 ? 'en' : ''}`}>({Number(recipe.rating).toFixed(1)} · {recipe.rating_count})</span>}
+          </div>
           <button className="btn btn-accent" onClick={() => setShowAddToMealPlan(!showAddToMealPlan)}>📅 Zu Essensplan</button>
           <button className="btn btn-secondary" onClick={handleDuplicate}>📋 Duplizieren</button>
           <button className="btn btn-secondary" onClick={() => setShowEditModal(true)}>✏️ Bearbeiten</button>
@@ -139,6 +161,9 @@ export default function RecipeDetailPage() {
             <span className="servings-count">{Math.round(recipe.servings * servingMultiplier)}</span>
             <button onClick={() => setServingMultiplier(servingMultiplier + 0.5)}>+</button>
             {servingMultiplier !== 1 && <button className="reset-btn" onClick={() => setServingMultiplier(1)}>↺</button>}
+            {scalingBadge(servingMultiplier) && (
+              <span className="scaling-badge" title="Zutaten werden automatisch skaliert">{scalingBadge(servingMultiplier)}</span>
+            )}
           </div>
         )}
         {tags.length > 0 && <div className="detail-tags">{tags.map(t => <span key={t} className="tag">{t}</span>)}</div>}
@@ -146,7 +171,16 @@ export default function RecipeDetailPage() {
           <div className="ingredients-section">
             <h2>Zutaten</h2>
             <ul className="ingredients-list">{ingredients.map((ing, i) => (
-              <li key={i} className="ingredient-item"><span className="ing-amount">{ing.amount} {ing.unit}</span><span className="ing-item">{ing.item}</span></li>
+              <li key={i} className="ingredient-item">
+                  {(() => {
+                    const scaled = scaleAmount(ing.amount, ing.unit, servingMultiplier);
+                    const display = scaled
+                      ? (scaled.unit ? `${scaled.amount} ${scaled.unit}` : scaled.amount)
+                      : (ing.amount ? `${ing.amount} ${ing.unit}`.trim() : '');
+                    return <span className="ing-amount">{display}</span>;
+                  })()}
+                  <span className="ing-item">{ing.item}</span>
+                </li>
             ))}</ul>
           </div>
           <div className="steps-section">

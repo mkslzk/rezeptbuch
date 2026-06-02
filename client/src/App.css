@@ -1984,6 +1984,31 @@ a:hover {
   color: white;
 }
 
+/* ===== Recipe Rating (1-5 stars) ===== */
+.rating-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 0.4rem;
+}
+.rating-stars .star-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.3rem;
+  padding: 0 1px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--color-sepia);
+  transition: color 0.15s, transform 0.1s;
+}
+.rating-stars .star-btn:hover { transform: scale(1.2); }
+.rating-stars .star-btn.active { color: #f39c12; }
+.rating-stars .rating-count {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-light);
+}
+
 /* ===== Theme System ===== */
 :root {
   /* Default: Omas Kochbuch */

@@ -142,4 +142,26 @@ router.patch('/recipes/:id/favorite', (req, res) => {
   }
 });
 
+// PATCH /api/recipes/:id/rating - Add rating (running average: 1-5 stars)
+router.patch('/recipes/:id/rating', (req, res) => {
+  try {
+    const rating = Number(req.body.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Rating must be an integer between 1 and 5' });
+    }
+    const recipe = db.prepare('SELECT rating, rating_count FROM recipes WHERE id = ?').get(req.params.id);
+    if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
+
+    const oldAvg = Number(recipe.rating) || 0;
+    const oldCount = Number(recipe.rating_count) || 0;
+    const newCount = oldCount + 1;
+    const newAvg = (oldAvg * oldCount + rating) / newCount;
+
+    db.prepare('UPDATE recipes SET rating = ?, rating_count = ? WHERE id = ?').run(newAvg, newCount, req.params.id);
+    res.json({ id: parseInt(req.params.id), rating: newAvg, rating_count: newCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
