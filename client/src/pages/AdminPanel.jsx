@@ -80,7 +80,12 @@ function ProgressBar({ progress }) {
 function ChangeItem({ change }) {
   const [expanded, setExpanded] = useState(false);
   const actionIcons = { add: '➕', update: '✏️', delete: '❌' };
-  const actionColors = { add: '#2ecc71', update: '#3498db', delete: '#e74c3c' };
+  // action colors come from theme via CSS classes — kept here as fallback only
+  const actionColors = {
+    add: 'var(--color-success)',
+    update: 'var(--color-sepia)',
+    delete: 'var(--color-danger)'
+  };
 
   return (
     <div className="change-item" style={{ borderLeftColor: actionColors[change.action] }}>
@@ -683,11 +688,11 @@ export default function AdminPanel() {
           {status?.latestStats && (
             <>
               <div className="off-status-card">
-                <div className="off-status-value" style={{ color: '#2ecc71' }}>+{status.latestStats.new}</div>
+                <div className="off-status-value" style={{ color: 'var(--color-success)' }}>+{status.latestStats.new}</div>
                 <div className="off-status-label">Neue</div>
               </div>
               <div className="off-status-card">
-                <div className="off-status-value" style={{ color: '#3498db' }}>±{status.latestStats.updated}</div>
+                <div className="off-status-value" style={{ color: 'var(--color-sepia)' }}>±{status.latestStats.updated}</div>
                 <div className="off-status-label">Aktualisiert</div>
               </div>
             </>
