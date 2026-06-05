@@ -696,18 +696,20 @@ a:hover {
 }
 
 .ingredient-item {
-  display: flex;
-  gap: 0.5rem;
   padding: 0.4rem 0;
   border-bottom: 1px dashed var(--color-border);
   font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .ing-amount {
+  display: inline-block;
   font-family: var(--font-accent);
   font-weight: bold;
   color: var(--color-accent);
-  min-width: 60px;
+  min-width: 80px;
+  margin-right: 0.5rem;
+  vertical-align: top;
 }
 
 .ing-item {
@@ -1197,6 +1199,150 @@ a:hover {
   color: var(--color-text-light);
   opacity: 0.6;
 }
+
+/* Check-off → Remove animation */
+.shopping-item.removing {
+  animation: slideOut 0.3s ease-out forwards;
+  pointer-events: none;
+  background: rgba(72, 187, 120, 0.08);
+}
+
+@keyframes slideOut {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    max-height: 80px;
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+  }
+  60% {
+    opacity: 0.6;
+    transform: translateX(20px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+}
+
+.shopping-item.removing .item-name {
+  text-decoration: line-through;
+  color: var(--color-green);
+  opacity: 0.7;
+}
+
+/* Undo Toast */
+.undo-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--color-paper, #fdf6e3);
+  border: 1px solid var(--color-green, #48bb78);
+  border-left: 4px solid var(--color-green, #48bb78);
+  border-radius: 12px;
+  padding: 0.7rem 1rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  font-size: 0.95rem;
+  animation: toastSlideUp 0.3s ease-out;
+  max-width: 90vw;
+}
+
+@keyframes toastSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 30px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.undo-toast .undo-icon {
+  font-size: 1.2rem;
+  color: var(--color-green, #48bb78);
+  font-weight: bold;
+}
+
+.undo-toast .undo-text {
+  color: var(--color-text, #2d3748);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.undo-toast .undo-text strong {
+  color: var(--color-brown, #5a3e2b);
+  font-weight: 600;
+}
+
+.undo-toast .undo-btn {
+  background: var(--color-green, #48bb78);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+
+.undo-toast .undo-btn:hover {
+  background: #38a169;
+  transform: translateY(-1px);
+}
+
+.undo-toast .undo-btn:active {
+  transform: translateY(0);
+}
+
+.undo-toast .undo-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--color-text-light, #718096);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0 0.3rem;
+  line-height: 1;
+}
+
+.undo-toast .undo-dismiss:hover {
+  color: var(--color-text, #2d3748);
+}
+
+@media (max-width: 480px) {
+  .undo-toast {
+    bottom: 1rem;
+    left: 1rem;
+    right: 1rem;
+    transform: none;
+    max-width: none;
+  }
+  @keyframes toastSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
 
 .item-amount {
   font-family: var(--font-accent);
@@ -1909,17 +2055,19 @@ a:hover {
 
 /* ===== Ingredient Scaling Display ===== */
 .ingredients-list li {
-  display: flex;
-  gap: 0.5rem;
   padding: 0.4rem 0;
   border-bottom: 1px dashed var(--color-border);
+  line-height: 1.5;
 }
 
 .ingredients-list .ing-amount {
+  display: inline-block;
   font-family: var(--font-accent);
   color: var(--color-accent);
   font-weight: bold;
   min-width: 80px;
+  margin-right: 0.5rem;
+  vertical-align: top;
 }
 
 .ingredients-list .ing-item {

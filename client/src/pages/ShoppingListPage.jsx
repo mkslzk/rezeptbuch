@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Modal from '../components/Modal.jsx';
 import ProductSearch from '../components/ProductSearch.jsx';
@@ -160,6 +160,12 @@ export default function ShoppingListPage() {
   // Sort state: 'category' (default) or 'store'
   const [sortMode, setSortMode] = useState('category');
 
+  // Check-off behavior: removing the item from the active list with undo
+  const [purchasedCount, setPurchasedCount] = useState(0);
+  const [removingId, setRemovingId] = useState(null);
+  const [undoItem, setUndoItem] = useState(null); // { item, listId, timeoutId }
+  const undoTimerRef = useRef(null);
+
   useEffect(() => {
     fetchMealPlans();
     
@@ -320,14 +326,95 @@ export default function ShoppingListPage() {
 
   async function toggleItem(itemId, checked) {
     if (!list) return;
+
+    if (checked) {
+      // Mark as purchased → DELETE from list with fade-out + undo
+      const item = items.find(i => i.id === itemId);
+      if (!item) return;
+
+      // Clear any previous undo timer
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = null;
+      }
+
+      // Start fade-out animation
+      setRemovingId(itemId);
+
+      // After 300ms (animation duration), actually remove from state + DELETE on server
+      setTimeout(async () => {
+        try {
+          await fetch(`/recipe/api/shopping-lists/${list.id}/items/${itemId}`, { method: 'DELETE' });
+        } catch (err) {
+          console.error('Failed to delete item:', err);
+        }
+        setItems(prev => prev.filter(i => i.id !== itemId));
+        setRemovingId(null);
+        setPurchasedCount(c => c + 1);
+
+        // Setup undo (4 seconds)
+        const timeoutId = setTimeout(() => {
+          setUndoItem(null);
+          undoTimerRef.current = null;
+        }, 4000);
+        undoTimerRef.current = timeoutId;
+        setUndoItem({ item: { ...item }, listId: list.id, timeoutId });
+      }, 300);
+    } else {
+      // Uncheck (legacy path; not used now since checked items are deleted)
+      try {
+        await fetch(`/recipe/api/shopping-lists/${list.id}/items/${itemId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ checked: 0 })
+        });
+        setItems(items.map(i => i.id === itemId ? { ...i, checked: 0 } : i));
+      } catch {}
+    }
+  }
+
+  async function undoLastRemoval() {
+    if (!undoItem) return;
+    const { item, listId, timeoutId } = undoItem;
+
+    // Cancel timeout
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setUndoItem(null);
+
+    // Re-add the item via POST
     try {
-      await fetch(`/recipe/api/shopping-lists/${list.id}/items/${itemId}`, {
-        method: 'PATCH',
+      const res = await fetch(`/recipe/api/shopping-lists/${listId}/items`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ checked: checked ? 1 : 0 })
+        body: JSON.stringify({
+          item: item.item,
+          amount: item.amount || '',
+          unit: item.unit || '',
+          category: item.category || 'sonstiges',
+          store: item.store || '',
+          off_product_name: item.off_product_name || null,
+          off_product_code: item.off_product_code || null,
+          off_brand: item.off_brand || null,
+          off_quantity: item.off_quantity || null
+        })
       });
-      setItems(items.map(i => i.id === itemId ? { ...i, checked: checked ? 1 : 0 } : i));
-    } catch {}
+      const restored = await res.json();
+      setItems(prev => [...prev, restored]);
+      setPurchasedCount(c => Math.max(0, c - 1));
+    } catch (err) {
+      console.error('Failed to restore item:', err);
+    }
+  }
+
+  function dismissUndo() {
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setUndoItem(null);
   }
 
   async function deleteItem(itemId) {
@@ -375,14 +462,23 @@ export default function ShoppingListPage() {
   async function handleClearAll() {
     if (!list || items.length === 0) return;
     if (!window.confirm(`Alle ${items.length} Einträge löschen?`)) return;
+    setScrapeStatus({ type: 'loading', msg: `Leere ${items.length} Einträge...` });
     try {
-      await Promise.all(items.map(item => 
+      const results = await Promise.allSettled(items.map(item =>
         fetch(`/recipe/api/shopping-lists/${list.id}/items/${item.id}`, { method: 'DELETE' })
       ));
+      const failed = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok));
       setItems([]);
+      if (failed.length > 0) {
+        setScrapeStatus({ type: 'error', msg: `${items.length - failed.length} gelöscht, ${failed.length} fehlgeschlagen` });
+      } else {
+        setScrapeStatus({ type: 'success', msg: `${items.length} Einträge gelöscht` });
+      }
     } catch (err) {
       console.error('Failed to clear items:', err);
+      setScrapeStatus({ type: 'error', msg: 'Fehler beim Leeren' });
     }
+    setTimeout(() => setScrapeStatus(null), 4000);
   }
 
   // ============================================================
@@ -458,7 +554,7 @@ export default function ShoppingListPage() {
     const storeLabel = item.store ? (STORE_LABELS[item.store] || item.store) : (bestOffer ? (STORE_LABELS[bestOffer.store] || bestOffer.store) : '');
 
     return (
-      <li className={`shopping-item ${item.checked ? 'checked' : ''}`}>
+      <li className={`shopping-item ${item.checked ? 'checked' : ''} ${removingId === item.id ? 'removing' : ''}`}>
         <label className="item-row-label">
           <input
             type="checkbox"
@@ -581,8 +677,21 @@ export default function ShoppingListPage() {
 
       {items.length > 0 && (
         <div className="progress-bar">
-          <div className="progress-fill" style={{ width: `${(checkedCount / items.length) * 100}%` }} />
-          <span>{checkedCount} / {items.length} erledigt</span>
+          <div className="progress-fill" style={{ width: `${items.length > 0 ? Math.min(100, (purchasedCount / (items.length + purchasedCount)) * 100) : 0}%` }} />
+          <span>{items.length} offen{purchasedCount > 0 ? ` · ${purchasedCount} erledigt` : ''}</span>
+        </div>
+      )}
+
+      {undoItem && (
+        <div className="undo-toast" role="status" aria-live="polite">
+          <span className="undo-icon">✓</span>
+          <span className="undo-text">
+            <strong>{undoItem.item.item}</strong> erledigt
+          </span>
+          <button className="undo-btn" onClick={undoLastRemoval}>
+            ↶ Rückgängig
+          </button>
+          <button className="undo-dismiss" onClick={dismissUndo} title="Schließen">✕</button>
         </div>
       )}
 

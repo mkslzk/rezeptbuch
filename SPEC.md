@@ -479,6 +479,12 @@ openclaw.tail62577c.ts.net/recipe/ → localhost:3001
 
 ## Changelog
 
+### 2026-06-05
+- Shopping List: Check-Off entfernt Artikel (DELETE mit Fade-Out + 4s Undo)
+- Shopping List: "Leeren" mit Promise.allSettled + Status-Feedback
+- Shopping List: Session-Counter "X erledigt in dieser Session"
+- Bugfix: Check-Off strich Artikel nur durch, entfernte ihn nicht
+
 ### 2026-05-18
 - LLM Settings Feature (Ollama + MiniMax Konfiguration)
 - TikTok/Instagram Video Import
