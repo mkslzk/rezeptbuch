@@ -18,12 +18,46 @@ const config = getConfig();
 const PLZ = config.plz || '56377';
 const EDEKA_MARKET_ID = config.edekaMarketId || PLZ;
 
+//===============================================================
+// Progress tracking (in-memory; client polls /api/offers/scrape/progress)
+//===============================================================
+const PROGRESS_TTL_MS = 5 * 60 * 1000;  // Auto-clear after 5 min
+
+let currentProgress = null;
+
+function setProgress(p) {
+  currentProgress = { timestamp: Date.now(), ...p };
+}
+
+function getProgress() {
+  if (!currentProgress) return null;
+  if (['done', 'error'].includes(currentProgress.status) &&
+      Date.now() - currentProgress.timestamp > PROGRESS_TTL_MS) {
+    currentProgress = null;
+    return null;
+  }
+  return currentProgress;
+}
+
+function clearProgress() { currentProgress = null; }
+
 // Marktguru stores from config (default to food stores only)
 const DEFAULT_MARKTGURU_STORES = [
   'lidl', 'penny', 'rewe', 'kaufland', 'netto-marken-discount',
   'nahkauf', 'toom', 'hornbach', 'obi', 'hellweg', 'kabs'
 ];
 const MARKTGURU_STORE_CONFIG = config.marktguruStores || DEFAULT_MARKTGURU_STORES;
+// Excluded stores (user-configured in Settings → Stores)
+// Dynamic exclusion check: re-read config on every call so changes are picked up live
+function getExcludedStores() {
+  try {
+    const liveConfig = getConfig();
+    return liveConfig.excludedStores || [];
+  } catch {
+    return [];
+  }
+}
+const STORE_EXCLUDED = (storeKey) => getExcludedStores().includes(storeKey);
 
 // Build the MARKTGURU_STORES array from config
 const MARKTGURU_STORE_URLS = {
@@ -785,8 +819,12 @@ async function scrapeEdekaApi(storeKey, url) {
 // Stores discovered on marktguru.de
 // Build MARKTGURU_STORES from config (filtered to only enabled stores)
 const MARKTGURU_STORES = MARKTGURU_STORE_CONFIG
-  .filter(storeKey => MARKTGURU_STORE_URLS[storeKey])
+  .filter(storeKey => MARKTGURU_STORE_URLS[storeKey] && !STORE_EXCLUDED(storeKey))
   .map(storeKey => ({ store: storeKey, ...MARKTGURU_STORE_URLS[storeKey] }));
+
+// Also track excluded marktguru stores count for the scraper status
+const MARKTGURU_EXCLUDED_COUNT = MARKTGURU_STORE_CONFIG
+  .filter(s => STORE_EXCLUDED(s)).length;
 
 async function scrapeMarktguruStore(page, storeInfo) {
   const { store, name, url } = storeInfo;
@@ -850,6 +888,9 @@ async function scrapeMarktguruStore(page, storeInfo) {
 async function scrapeAllMarktguruStores() {
   console.log('\n📍 Scraping marktguru.de stores...');
   const results = {};
+  if (MARKTGURU_EXCLUDED_COUNT > 0) {
+    console.log(`⏭️  ${MARKTGURU_EXCLUDED_COUNT} marktguru stores excluded`);
+  }
   
   const browser = await firefox.launch({ 
     headless: false,
@@ -894,10 +935,20 @@ async function scrapeAllMarktguruStores() {
   }
   
   await browser.close();
-  
-  const total = Object.values(results).reduce((s, a) => s + a.length, 0);
-  console.log(`✅ marktguru: ${total} total offers from ${Object.values(results).filter(a => a.length > 0).length} stores\n`);
-  
+
+  const totalOffers = Object.values(results).reduce((s, a) => s + a.length, 0);
+  const active = Object.values(results).filter(a => a.length > 0).length;
+  const durationS = ((Date.now() - startTs) / 1000).toFixed(1);
+  console.log(`✅ marktguru: ${totalOffers} total offers from ${active} stores in ${durationS}s\n`);
+
+  setProgress({
+    stage: 'done', status: 'done',
+    message: `${totalOffers} Marktguru-Angebote von ${active}/${total} Stores in ${durationS}s`,
+    source: 'marktguru',
+    progress: 100, currentStore: total, totalStores: total,
+    stats: { totalOffers, activeStores: active, totalStores: total, durationS }
+  });
+
   return results;
 }
 
@@ -1037,9 +1088,29 @@ async function fetchWithRetry(url, retries = 2) {
 async function scrapeAllStores() {
   console.log('🔍 Scraping all stores...');
   const results = {};
-  
-  for (const [key, store] of Object.entries(STORES)) {
+  const storeKeys = Object.keys(STORES).filter(k => !STORE_EXCLUDED(k));
+  const storeCount = storeKeys.length;
+  if (storeCount < Object.keys(STORES).length) {
+    console.log(`⏭️  Skipping ${Object.keys(STORES).length - storeCount} excluded stores: ${Object.keys(STORES).filter(k => STORE_EXCLUDED(k)).join(', ')}`);
+  }
+  const startTime = Date.now();
+
+  for (let i = 0; i < storeKeys.length; i++) {
+    const key = storeKeys[i];
+    const store = STORES[key];
     const cfg = SCRAPE_CONFIG[key] || {};
+
+    // Emit progress: store started
+    setProgress({
+      stage: 'fetching',
+      status: 'running',
+      message: `Lade ${store.name} (${i + 1}/${storeCount})...`,
+      progress: Math.round((i / storeCount) * 100),
+      currentStore: i + 1,
+      totalStores: storeCount,
+      currentStoreName: store.name,
+      source: 'direkt'
+    });
 
     if (cfg.useApi) {
       console.log(`  📋 ${key}: fetching via API...`);
@@ -1065,14 +1136,27 @@ async function scrapeAllStores() {
     }
     console.log(`  ✅ ${key}: ${results[key].length} offers`);
   }
-  
-  cachedOffers = results;
-  lastUpdated = new Date().toISOString();
-  
+
+  // Final progress update
   const total = Object.values(results).reduce((s, a) => s + a.length, 0);
   const active = Object.values(results).filter(a => a.length > 0).length;
-  console.log(`✅ ${total} offers from ${active}/${Object.keys(results).length} stores`);
-  
+  const durationS = ((Date.now() - startTime) / 1000).toFixed(1);
+
+  setProgress({
+    stage: 'done',
+    status: 'done',
+    message: `${total} Angebote von ${active}/${storeCount} Stores`,
+    progress: 100,
+    currentStore: storeCount,
+    totalStores: storeCount,
+    stats: { totalOffers: total, activeStores: active, totalStores: storeCount, durationS },
+    source: 'direkt'
+  });
+
+  cachedOffers = results;
+  lastUpdated = new Date().toISOString();
+
+  console.log(`✅ ${total} offers from ${active}/${storeCount} stores`);
   return results;
 }
 
@@ -1166,4 +1250,6 @@ function getOffers() {
 
 process.on('exit', async () => { if (tesseractWorker) await tesseractWorker.terminate(); });
 
-module.exports = { scrapeAllStores, scrapeAllMarktguruStores, getOffers, matchItemsToOffers, MARKTGURU_STORES };
+module.exports = {
+  getProgress,
+  scrapeAllStores, scrapeAllMarktguruStores, getOffers, matchItemsToOffers, MARKTGURU_STORES };

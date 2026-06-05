@@ -163,3 +163,78 @@ function testMinimax(config) {
 }
 
 module.exports = router;
+// ============================================================
+// STORE EXCLUSIONS
+// ============================================================
+const OFFERS_CONFIG = path.join(__dirname, '../data/offers-config.json');
+const STORE_LABELS = {
+  'lidl': 'Lidl',
+  'penny': 'PENNY',
+  'rewe': 'REWE',
+  'kaufland': 'Kaufland',
+  'netto-marken-discount': 'Netto Marken-Discount',
+  'nahkauf': 'Nahkauf',
+  'toom': 'Toom Baumarkt',
+  'hornbach': 'Hornbach',
+  'obi': 'OBI',
+  'hellweg': 'Hellweg',
+  'kabs': 'Kabs',
+  'aldi': 'ALDI',
+  'edeka': 'EDEKA',
+  'metro': 'METRO',
+  'real': 'real'
+};
+
+function getOffersConfig() {
+  try {
+    if (fs.existsSync(OFFERS_CONFIG)) {
+      return JSON.parse(fs.readFileSync(OFFERS_CONFIG, 'utf8'));
+    }
+  } catch (e) {}
+  return { plz: '56377', stores: [], marktguruStores: [], excludedStores: [] };
+}
+
+function saveOffersConfig(cfg) {
+  fs.writeFileSync(OFFERS_CONFIG, JSON.stringify(cfg, null, 2));
+}
+
+// GET /api/settings/stores - Get all known stores + their excluded status
+router.get('/stores', (req, res) => {
+  const cfg = getOffersConfig();
+  const allStores = Array.from(new Set([...(cfg.stores || []), ...(cfg.marktguruStores || [])]));
+  const excluded = cfg.excludedStores || [];
+  res.json({
+    stores: allStores.map(key => ({
+      key,
+      label: STORE_LABELS[key] || key,
+      excluded: excluded.includes(key)
+    })),
+    excludedCount: excluded.length,
+    activeCount: allStores.length - excluded.length
+  });
+});
+
+// PUT /api/settings/stores - Update store exclusions
+// Body: { excludedStores: ['aldi', 'metro'] }
+router.put('/stores', (req, res) => {
+  const cfg = getOffersConfig();
+  const { excludedStores } = req.body || {};
+  if (!Array.isArray(excludedStores)) {
+    return res.status(400).json({ error: 'excludedStores must be an array' });
+  }
+  // Validate: all keys must be known
+  const validKeys = new Set([...(cfg.stores || []), ...(cfg.marktguruStores || []), ...Object.keys(STORE_LABELS)]);
+  const cleaned = excludedStores.filter(k => typeof k === 'string' && validKeys.has(k));
+  cfg.excludedStores = [...new Set(cleaned)];
+  saveOffersConfig(cfg);
+  res.json({ success: true, excludedStores: cfg.excludedStores });
+});
+
+// POST /api/settings/stores/reset - Reset exclusions to default (none excluded)
+router.post('/stores/reset', (req, res) => {
+  const cfg = getOffersConfig();
+  cfg.excludedStores = [];
+  saveOffersConfig(cfg);
+  res.json({ success: true, excludedStores: [] });
+});
+

@@ -4194,3 +4194,112 @@ a:hover {
 .llm-info li {
   margin-bottom: 0.3rem;
 }
+
+
+/* ============================================================
+   STORES SETTINGS TAB (Settings → 🛒 Stores)
+   ============================================================ */
+.stores-settings .stores-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+.store-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--color-cream, #f7efdf);
+  border: 1px solid var(--color-border, #e0d4c0);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.store-toggle:hover {
+  background: var(--color-paper, #fdf6e3);
+  border-color: var(--color-accent, #b85c38);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.store-toggle.excluded {
+  opacity: 0.55;
+  background: transparent;
+  border-style: dashed;
+}
+
+.store-toggle.excluded .store-name {
+  text-decoration: line-through;
+  color: var(--color-text-light, #718096);
+}
+
+.store-toggle input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-green, #48bb78);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.store-toggle-label {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.store-name {
+  font-weight: 600;
+  color: var(--color-text, #2d3748);
+  font-size: 0.95rem;
+}
+
+.store-key {
+  font-size: 0.75rem;
+  color: var(--color-text-light, #718096);
+  font-family: var(--font-mono, monospace);
+  opacity: 0.7;
+}
+
+.store-toggle-status {
+  font-size: 0.8rem;
+  color: var(--color-text-light, #718096);
+  white-space: nowrap;
+  font-family: var(--font-accent, sans-serif);
+}
+
+.store-toggle:not(.excluded) .store-toggle-status {
+  color: var(--color-green, #48bb78);
+  font-weight: 600;
+}
+
+.stores-loading {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-light, #718096);
+}
+
+.stores-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.stores-hint {
+  font-size: 0.85rem;
+  color: var(--color-text-light, #718096);
+  font-style: italic;
+}
+
+@media (max-width: 600px) {
+  .stores-settings .stores-grid {
+    grid-template-columns: 1fr;
+  }
+}

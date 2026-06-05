@@ -9,6 +9,12 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
   const [eigenmarken, setEigenmarken] = useState([]);
   const [newEigenmarken, setNewEigenmarken] = useState({ store: 'rewe', product_name: '', reference_price: '' });
   
+  // Store Exclusions state
+  const [stores, setStores] = useState([]);
+  const [storesLoading, setStoresLoading] = useState(false);
+  const [storesSaving, setStoresSaving] = useState(false);
+  const [storesStatus, setStoresStatus] = useState(null);
+
   // LLM Settings state
   const [llmConfig, setLlmConfig] = useState({
     provider: 'ollama',
@@ -34,6 +40,72 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
         .catch(() => {});
     }
   }, [activeTab]);
+
+  // Load stores when Stores tab opens
+  const loadStores = () => {
+    setStoresLoading(true);
+    fetch('/recipe/recipe/api/settings/stores')
+      .then(r => r.json())
+      .then(data => {
+        setStores(data.stores || []);
+        setStoresStatus({ type: 'info', msg: `${data.activeCount} aktiv · ${data.excludedCount} ausgeblendet` });
+      })
+      .catch(err => setStoresStatus({ type: 'error', msg: 'Fehler: ' + err.message }))
+      .finally(() => setStoresLoading(false));
+  };
+
+  useEffect(() => {
+    if (activeTab === 'stores') loadStores();
+  }, [activeTab]);
+
+  async function handleToggleStore(storeKey, currentlyExcluded) {
+    const newExcluded = !currentlyExcluded;
+    // Optimistic update
+    setStores(prev => prev.map(s => s.key === storeKey ? { ...s, excluded: newExcluded } : s));
+    
+    const newList = stores
+      .map(s => s.key === storeKey ? (newExcluded ? s.key : null) : (s.excluded ? s.key : null))
+      .filter(Boolean);
+    
+    setStoresSaving(true);
+    try {
+      const res = await fetch('/recipe/recipe/api/settings/stores', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ excludedStores: newList })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStoresStatus({ 
+          type: 'success', 
+          msg: `${newList.length} ${newList.length === 1 ? 'Store' : 'Stores'} ausgeblendet · nächster Scrape berücksichtigt es` 
+        });
+      } else {
+        // Rollback
+        setStores(prev => prev.map(s => s.key === storeKey ? { ...s, excluded: currentlyExcluded } : s));
+        setStoresStatus({ type: 'error', msg: 'Fehler beim Speichern' });
+      }
+    } catch (err) {
+      setStores(prev => prev.map(s => s.key === storeKey ? { ...s, excluded: currentlyExcluded } : s));
+      setStoresStatus({ type: 'error', msg: 'Fehler: ' + err.message });
+    }
+    setStoresSaving(false);
+    setTimeout(() => setStoresStatus(null), 4000);
+  }
+
+  async function handleResetStores() {
+    if (!window.confirm('Alle Store-Ausblendungen zurücksetzen?')) return;
+    setStoresSaving(true);
+    try {
+      await fetch('/recipe/recipe/api/settings/stores/reset', { method: 'POST' });
+      setStores(prev => prev.map(s => ({ ...s, excluded: false })));
+      setStoresStatus({ type: 'success', msg: 'Alle Stores wieder aktiv' });
+    } catch (err) {
+      setStoresStatus({ type: 'error', msg: 'Fehler: ' + err.message });
+    }
+    setStoresSaving(false);
+    setTimeout(() => setStoresStatus(null), 3000);
+  }
 
   const loadEigenmarken = () => {
     fetch('/recipe/recipe/api/offers/eigenmarken')
@@ -138,6 +210,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
           <button className={`tab-btn ${activeTab === 'location' ? 'active' : ''}`} onClick={() => setActiveTab('location')}>📍 Standort</button>
           <button className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')}>🤖 KI</button>
           <button className={`tab-btn ${activeTab === 'eigenmarken' ? 'active' : ''}`} onClick={() => setActiveTab('eigenmarken')}>🏷️ Eigenmarken</button>
+          <button className={`tab-btn ${activeTab === 'stores' ? 'active' : ''}`} onClick={() => setActiveTab('stores')}>🛒 Stores</button>
           <button className={`tab-btn ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>ℹ️ Über</button>
         </div>
         
@@ -316,6 +389,60 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {activeTab === 'stores' && (
+            <div className="stores-settings">
+              <p className="settings-description">
+                Wähle aus, welche Stores beim Angebote-Scrape ignoriert werden sollen. 
+                Nützlich wenn du z.B. nie bei ALDI einkaufst oder ein Store technisch nicht funktioniert.
+              </p>
+
+              {storesStatus && (
+                <div className={`status-message ${storesStatus.type}`} style={{ marginBottom: '1rem' }}>
+                  {storesStatus.msg}
+                </div>
+              )}
+
+              {storesLoading ? (
+                <div className="stores-loading">⏳ Lade Stores...</div>
+              ) : (
+                <>
+                  <div className="stores-grid">
+                    {stores.map(s => (
+                      <label key={s.key} className={`store-toggle ${s.excluded ? 'excluded' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={!s.excluded}
+                          disabled={storesSaving}
+                          onChange={() => handleToggleStore(s.key, s.excluded)}
+                        />
+                        <span className="store-toggle-label">
+                          <span className="store-name">{s.label}</span>
+                          <span className="store-key">{s.key}</span>
+                        </span>
+                        <span className="store-toggle-status">
+                          {s.excluded ? '⏭️ aus' : '✓ aktiv'}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="stores-actions">
+                    <button 
+                      className="btn btn-secondary"
+                      onClick={handleResetStores}
+                      disabled={storesSaving || !stores.some(s => s.excluded)}
+                    >
+                      ↻ Alle zurücksetzen
+                    </button>
+                    <span className="stores-hint">
+                      💡 Beim nächsten Scrape werden ausgeblendete Stores übersprungen
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
