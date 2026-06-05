@@ -484,6 +484,9 @@ openclaw.tail62577c.ts.net/recipe/ → localhost:3001
 - Shopping List: "Leeren" mit Promise.allSettled + Status-Feedback
 - Shopping List: Session-Counter "X erledigt in dieser Session"
 - Bugfix: Check-Off strich Artikel nur durch, entfernte ihn nicht
+- Settings: 🛒 Stores Tab — Scraper Exclude pro Store (Toggle UI + API)
+- Scraper: Filter excludedStores live (kein Server-Restart nötig)
+- SettingsModal: 'Alle zurücksetzen' für Store-Excludes
 
 ### 2026-05-18
 - LLM Settings Feature (Ollama + MiniMax Konfiguration)
