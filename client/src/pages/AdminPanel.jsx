@@ -144,6 +144,8 @@ function OffersDataView() {
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [scrapeLoading, setScrapeLoading] = useState(false);
+  const [scrapeProg, setScrapeProg] = useState(null);
+  const [scrapePollId, setScrapePollId] = useState(null);
   const [marktguruLoading, setMarktguruLoading] = useState(false);
   const [showStoreSelect, setShowStoreSelect] = useState(false);
   const [selectedStores, setSelectedStores] = useState(['lidl', 'penny', 'rewe', 'kaufland', 'netto-marken-discount', 'nahkauf', 'toom', 'hornbach', 'obi', 'hellweg', 'kabs']);
@@ -151,6 +153,7 @@ function OffersDataView() {
   const [searchResults, setSearchResults] = useState(null);
   const [priceHistory, setPriceHistory] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [scrapeStatus, setScrapeStatus] = useState(null);
 
   const ALL_SCRAPE_STORES = [
     { key: 'lidl', label: 'Lidl' }, { key: 'kaufland', label: 'Kaufland' },
@@ -177,20 +180,72 @@ function OffersDataView() {
 
   const handleScrape = async () => {
     setScrapeLoading(true);
-    try { await fetch(`${API_OFFERS}/scrape`, { method: 'POST' }); loadData(); }
+    setScrapeProg({ stage: 'start', status: 'running', message: 'Starte Scrape...', progress: 0 });
+    // Start polling for progress
+    const pollId = setInterval(async () => {
+      try {
+        const r = await fetch(`${API_OFFERS}/scrape/progress`);
+        const d = await r.json();
+        if (d.progress) {
+          setScrapeProg(d.progress);
+          if (d.progress.status !== 'running') {
+            clearInterval(pollId);
+            setScrapeProg(null);
+            const isError = d.progress.status === 'error';
+            const stats = d.progress.stats || {};
+            const msg = d.progress.message || (isError ? 'Fehler beim Scrape' : 'Fertig');
+            setScrapeStatus({
+              type: isError ? 'error' : 'success',
+              msg: isError
+                ? `❌ ${msg}`
+                : `✅ ${msg} (${stats.activeStores ?? '?'}/${stats.totalStores ?? '?'} Stores aktiv)`
+            });
+            setTimeout(() => setScrapeStatus(null), 8000);
+            loadData();
+          }
+        }
+      } catch {}
+    }, 500);
+    setScrapePollId(pollId);
+    setScrapeStatus({ type: 'loading', msg: '🛒 Direkt-Scrape läuft…' });
+    try { await fetch(`${API_OFFERS}/scrape`, { method: 'POST' }); }
+    catch (e) {
+      setScrapeStatus({ type: 'error', msg: '❌ Scrape-Request fehlgeschlagen: ' + e.message });
+      setTimeout(() => setScrapeStatus(null), 8000);
+    }
     finally { setScrapeLoading(false); }
   };
 
   const handleMarktguruScrape = async () => {
     setMarktguruLoading(true);
+    setScrapeProg({ stage: 'start', status: 'running', message: 'Starte Marktguru...', progress: 0 });
+    const pollId = setInterval(async () => {
+      try {
+        const r = await fetch(`${API_OFFERS}/scrape/progress`);
+        const d = await r.json();
+        if (d.progress) {
+          setScrapeProg(d.progress);
+          if (d.progress.status !== 'running') {
+            clearInterval(pollId);
+            setScrapeProg(null);
+            loadData();
+          }
+        }
+      } catch {}
+    }, 500);
+    setScrapePollId(pollId);
+    setScrapeStatus({ type: 'loading', msg: '📍 Marktguru-Scrape läuft…' });
     try {
       await fetch(`${API_OFFERS}/config`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ marktguruStores: selectedStores })
       });
       await fetch(`${API_OFFERS}/scrape/marktguru`, { method: 'POST' });
-      loadData();
-    } finally { setMarktguruLoading(false); }
+    } catch (e) {
+      setScrapeStatus({ type: 'error', msg: '❌ Marktguru-Request fehlgeschlagen: ' + e.message });
+      setTimeout(() => setScrapeStatus(null), 8000);
+    }
+    finally { setMarktguruLoading(false); }
   };
 
   const handleSearch = (e) => {
@@ -232,6 +287,18 @@ function OffersDataView() {
           </button>
         </div>
       </div>
+
+      {scrapeProg && (
+        <div style={{ marginBottom: '1rem' }}>
+          <ProgressBar progress={scrapeProg} />
+        </div>
+      )}
+
+      {scrapeStatus && (
+        <div className={`status-message ${scrapeStatus.type}`} style={{ marginBottom: '1rem' }}>
+          {scrapeStatus.msg}
+        </div>
+      )}
 
       {showStoreSelect && (
         <div className="admin-store-select">

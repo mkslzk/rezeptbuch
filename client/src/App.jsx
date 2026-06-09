@@ -6,6 +6,8 @@ import RecipeFormPage from './pages/RecipeFormPage';
 import MealPlanPage from './pages/MealPlanPage';
 import ShoppingListPage from './pages/ShoppingListPage';
 import AdminPanel from './pages/AdminPanel.jsx';
+import BatchImportPage from './pages/BatchImportPage.jsx';
+import ImportStatusBanner from './components/ImportStatusBanner.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import './App.css';
@@ -62,6 +64,7 @@ function App() {
             </div>
           </header>
           <main className="main-content">
+            <ImportStatusBanner />
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/recipe/new" element={<RecipeFormPage />} />
@@ -70,6 +73,7 @@ function App() {
               <Route path="/meal-plan" element={<MealPlanPage />} />
               <Route path="/shopping-list" element={<ShoppingListPage />} />
               <Route path="/admin" element={<AdminPanel />} />
+              <Route path="/batch" element={<BatchImportPage />} />
             </Routes>
           </main>
         </div>

@@ -26,5 +26,6 @@
     "obi",
     "hellweg",
     "kabs"
-  ]
+  ],
+  "excludedStores": []
 }

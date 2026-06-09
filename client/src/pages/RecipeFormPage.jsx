@@ -33,6 +33,89 @@ export default function RecipeFormPage() {
   const [uploadedImageFile, setUploadedImageFile] = useState(null);
   const [importingVideo, setImportingVideo] = useState(false);
   const [videoImportStatus, setVideoImportStatus] = useState(null);
+  const [videoImportProg, setVideoImportProg] = useState(null);
+  const [activeJobId, setActiveJobId] = useState(() => sessionStorage.getItem('videoImportJobId') || null);
+
+  const STAGE_LABELS = {
+    start: 'Start', extract: 'Video extrahieren', download: 'Video herunterladen',
+    transcribe: 'Transkribieren', recipe: 'Rezept extrahieren',
+    done: 'Fertig', error: 'Fehler'
+  };
+
+  function ProgressBar({ progress }) {
+    if (!progress) return null;
+    const pct = typeof progress.progress === 'number' ? progress.progress : null;
+    const stageLabel = STAGE_LABELS[progress.stage] || progress.stage;
+    return (
+      <div className="off-progress">
+        <div className="off-progress-header">
+          <span className="off-progress-stage">{stageLabel}</span>
+          <span className="off-progress-message">{progress.message}</span>
+        </div>
+        {pct !== null ? (
+          <div className="off-progress-bar-container">
+            <div className="off-progress-bar" style={{ width: `${pct}%` }} />
+          </div>
+        ) : (
+          <div className="off-progress-spinner">⏳</div>
+        )}
+        {pct !== null && <div className="off-progress-stats">{pct}%</div>}
+      </div>
+    );
+  }
+
+  // Resume an in-progress job after page reload / navigation
+  useEffect(() => {
+    if (!activeJobId || videoImportProg?.status !== 'running') return;
+    const pollId = setInterval(async () => {
+      try {
+        const r = await fetch(`/recipe/api/recipes/import-video/progress?jobId=${activeJobId}`);
+        const d = await r.json();
+        if (!d.progress) { clearInterval(pollId); return; }
+        setVideoImportProg(d.progress);
+        if (d.progress.status === 'done' || d.progress.status === 'error') {
+          clearInterval(pollId);
+          if (d.progress.status === 'done') await fetchAndApplyResult(activeJobId);
+          else setVideoImportStatus({ type: 'error', msg: d.progress.message });
+        }
+      } catch {}
+    }, 2000);
+    return () => clearInterval(pollId);
+  }, [activeJobId]);
+
+  async function fetchAndApplyResult(jobId) {
+    const resR = await fetch(`/recipe/api/recipes/import-video/result/${jobId}`);
+    const data = await resR.json();
+    if (!resR.ok) throw new Error(data.error || 'Failed to fetch result');
+    applyRecipeToForm(data);
+    setVideoImportStatus({ type: 'success', msg: `✅ Rezept "${data.title}" importiert!` });
+    sessionStorage.removeItem('videoImportJobId');
+    setActiveJobId(null);
+  }
+
+  function applyRecipeToForm(data) {
+    // For video imports: description falls back to the original TikTok/IG caption,
+    // so the user has the full source text in the form for reference / manual edits.
+    const caption = data.video_caption || '';
+    setForm({
+      title: data.title || '',
+      description: data.description || caption,
+      image_url: data.image_url || '',
+      category: data.category || '',
+      servings: data.servings || '',
+      prep_time: data.prep_time || '',
+      cook_time: data.cook_time || '',
+      source_url: data.source_url || importUrl
+    });
+    if (data.image_url) setImagePreview(data.image_url);
+    if (data.ingredients?.length) {
+      const parsed = data.ingredients.map(i => ({ item: i, amount: '', unit: '', category: 'produce' }));
+      setIngredients(parsed);
+      matchIngredients(parsed);
+    }
+    if (data.steps?.length) setSteps(data.steps);
+    setImportUrl('');
+  }
 
   // Ingredient matching state (filled after import)
   const [ingredientMatches, setIngredientMatches] = useState({});
@@ -101,9 +184,12 @@ export default function RecipeFormPage() {
   async function handleVideoImport() {
     if (!importUrl) return;
     setImportingVideo(true);
-    setVideoImportStatus({ type: 'loading', msg: 'Extrahiere Video...' });
+    setVideoImportStatus(null);
+    setVideoImportProg({ stage: 'start', status: 'running', message: 'Starte Import…', progress: 0 });
     setIngredientMatches({});
+    let jobId = null;
     try {
+      // Start job
       const res = await fetch('/recipe/api/recipes/import-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,31 +197,58 @@ export default function RecipeFormPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Import failed');
-      
-      setForm({
-        title: data.title || '',
-        description: data.description || '',
-        image_url: data.image_url || '',
-        category: data.category || '',
-        servings: data.servings || '',
-        prep_time: data.prep_time || '',
-        cook_time: data.cook_time || '',
-        source_url: data.source_url || importUrl
+      jobId = data.jobId;
+      sessionStorage.setItem('videoImportJobId', jobId);
+      setActiveJobId(jobId);
+
+      // Poll progress
+      await new Promise((resolve, reject) => {
+        const poll = setInterval(async () => {
+          try {
+            const r = await fetch(`/recipe/api/recipes/import-video/progress?jobId=${jobId}`);
+            const d = await r.json();
+            if (d.progress) {
+              setVideoImportProg(d.progress);
+              if (d.progress.status !== 'running') {
+                clearInterval(poll);
+                if (d.progress.status === 'done') resolve();
+                else reject(new Error(d.progress.message || d.progress.error || 'Import fehlgeschlagen'));
+              }
+            }
+          } catch {}
+        }, 1500);
       });
-      if (data.image_url) setImagePreview(data.image_url);
-      if (data.ingredients?.length) {
-        const parsed = data.ingredients.map(i => ({ item: i, amount: '', unit: '', category: 'produce' }));
-        setIngredients(parsed);
-        matchIngredients(parsed);
+
+      // Fetch & apply result
+      const resR = await fetch(`/recipe/api/recipes/import-video/result/${jobId}`);
+      const recipe = await resR.json();
+      if (!resR.ok) throw new Error(recipe.error || 'Ergebnis nicht abrufbar');
+
+      sessionStorage.removeItem('videoImportJobId');
+      setActiveJobId(null);
+
+      // Auto-saved on the server → navigate straight to the detail page
+      if (recipe.recipe_id) {
+        setVideoImportStatus({ type: 'success', msg: `✅ Rezept "${recipe.title}" gespeichert!` });
+        navigate(`/recipe/${recipe.recipe_id}`);
+        return;
       }
-      if (data.steps?.length) setSteps(data.steps);
-      setImportUrl('');
-      setVideoImportStatus({ type: 'success', msg: `Rezept "${data.title}" importiert!` });
+
+      // Fallback: no auto-save (older flow) — fill form for manual save
+      applyRecipeToForm(recipe);
+      setVideoImportStatus({ type: 'success', msg: `✅ Rezept "${recipe.title}" importiert! Bitte speichern.` });
     } catch (err) {
       setVideoImportStatus({ type: 'error', msg: err.message });
     } finally {
       setImportingVideo(false);
     }
+  }
+
+  async function cancelVideoImport() {
+    if (!activeJobId) return;
+    try {
+      await fetch('/recipe/api/recipes/import-video/cancel', { method: 'POST' });
+    } catch {}
   }
 
   function isVideoUrl(url) {
@@ -290,6 +403,22 @@ export default function RecipeFormPage() {
         {matchingIngredients && (
           <p className="import-matching-hint">🔍 Prüfe passende Produkte zu den Zutaten...</p>
         )}
+        {videoImportProg && (
+          <div style={{ marginTop: '0.5rem' }}>
+            <ProgressBar progress={videoImportProg} />
+            {videoImportProg.status === 'running' && (
+              <button
+                type="button"
+                onClick={cancelVideoImport}
+                className="btn btn-secondary btn-sm"
+                style={{ marginTop: '0.5rem' }}
+              >
+                ✕ Abbrechen
+              </button>
+            )}
+          </div>
+        )}
+
         {videoImportStatus && (
           <p className={`import-status import-status-${videoImportStatus.type}`}>
             {videoImportStatus.msg}

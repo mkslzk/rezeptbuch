@@ -1,92 +1,99 @@
-const { readFileSync, existsSync, unlinkSync } = require('fs');
+const { existsSync, unlinkSync } = require('fs');
 const { tmpdir } = require('os');
 const { spawn } = require('child_process');
 const path = require('path');
 
 /**
- * Transcribe audio from a video file using faster-whisper
- * Works locally without API keys
- * 
+ * Transcribe audio from a local video file using faster-whisper.
+ * Uses a 2-step pipeline (ffmpeg → wav file → whisper file) instead of
+ * piping ffmpeg stdout directly into whisper stdin, which used to crash
+ * the whole Node process on EPIPE (whisper dies, ffmpeg keeps writing).
+ *
  * @param {string} videoPath - Local path to video file
- * @param {string} model - 'tiny', 'base', 'small', 'medium', 'large' (default: 'base')
+ * @param {string} model - 'tiny' | 'base' | 'small' | 'medium' | 'large' (default: 'small')
  * @returns {Promise<string>} Transcribed text
  */
-function transcribeVideo(videoPath, model = 'base') {
+function transcribeVideo(videoPath, model = 'small') {
   return new Promise((resolve, reject) => {
-    const tmpOutput = path.join(tmpdir(), `transcript_${Date.now()}.txt`);
-    
-    // Use ffmpeg to extract audio and pipe to faster-whisper via Python
+    if (!existsSync(videoPath)) return reject(new Error('Video-Datei nicht gefunden: ' + videoPath));
+
+    const wavPath = path.join(tmpdir(), `audio_${Date.now()}.wav`);
+
+    // Step 1: ffmpeg extracts audio to a WAV file (no piping, no EPIPE risk)
     const ffmpeg = spawn('ffmpeg', [
+      '-y',                       // overwrite output
       '-i', videoPath,
-      '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
-      '-f', 'wav', '-'
+      '-vn',                      // no video
+      '-acodec', 'pcm_s16le',
+      '-ar', '16000',             // 16kHz (whisper expects this)
+      '-ac', '1',                 // mono
+      wavPath
     ]);
-    
-    // Start whisper transcription using Python
-    const whisper = spawn('python3', [
-      '-c',
-      `
+
+    let ffmpegErr = '';
+    ffmpeg.stderr.on('data', d => { ffmpegErr += d.toString(); });
+    ffmpeg.on('error', e => reject(new Error('ffmpeg nicht verfügbar: ' + e.message)));
+
+    ffmpeg.on('close', code => {
+      if (code !== 0 || !existsSync(wavPath)) {
+        try { unlinkSync(wavPath); } catch {}
+        // Last useful line from ffmpeg (usually contains the real error)
+        const lastLine = ffmpegErr.trim().split('\n').filter(l => l.trim()).pop() || '';
+        return reject(new Error('Audio-Extraktion fehlgeschlagen: ' + (lastLine || `exit ${code}`)));
+      }
+
+      // Step 2: whisper reads the WAV file directly
+      const whisper = spawn('python3', [
+        '-c',
+        `
 import sys
 import faster_whisper
-
-model = faster_whisper.load_model("${model}")
-segments, info = model.transcribe(sys.stdin.buffer, language="de", task="transcribe")
-text = []
-for segment in segments:
-    text.append(segment.text)
-print(' '.join(text), flush=True)
+# faster-whisper >=1.0: WhisperModel is a class, not a function
+model = faster_whisper.WhisperModel("${model}", device="cpu", compute_type="int8")
+segments, info = model.transcribe("${wavPath}", language="de", task="transcribe")
+print(' '.join(seg.text for seg in segments), flush=True)
 `
-    ], { stdio: ['pipe', 'pipe', 'pipe'] });
+      ]);
 
-    let transcript = '';
-    let error = '';
+      let transcript = '';
+      let whisperErr = '';
+      let crashed = false;
 
-    ffmpeg.stdout.pipe(whisper.stdin);
-    
-    whisper.stdout.on('data', (data) => {
-      transcript += data.toString();
+      whisper.stdout.on('data', d => { transcript += d.toString(); });
+      whisper.stderr.on('data', d => { whisperErr += d.toString(); });
+      whisper.on('error', e => {
+        crashed = true;
+        try { unlinkSync(wavPath); } catch {}
+        reject(new Error('Whisper-Fehler: ' + e.message));
+      });
+
+      whisper.on('close', wcode => {
+        try { unlinkSync(wavPath); } catch {}
+        if (crashed) return;
+        if (wcode === 0) return resolve(transcript.trim());
+        // Surface the most informative whisper error
+        const lastErr = whisperErr.trim().split('\n').filter(l => l.trim()).pop() || '';
+        reject(new Error('Whisper fehlgeschlagen: ' + (lastErr || `exit ${wcode}`)));
+      });
     });
-
-    whisper.stderr.on('data', (data) => {
-      error += data.toString();
-    });
-
-    whisper.on('close', (code) => {
-      if (code === 0) {
-        resolve(transcript.trim());
-      } else {
-        reject(new Error(`Whisper failed: ${error}`));
-      }
-    });
-
-    ffmpeg.on('error', (e) => reject(e));
-    whisper.on('error', (e) => reject(e));
   });
 }
 
 /**
- * Simple transcript from video URL (downloads first)
- * @param {string} videoUrl - URL to video
- * @param {string} model - whisper model size
+ * @deprecated Use extractVideoUrl (yt-dlp) + transcribeVideo directly.
+ * Kept for backward compat — downloads with curl, which 403s on TikTok.
  */
 async function transcribeVideoUrl(videoUrl, model = 'base') {
   const tmpVideo = path.join(tmpdir(), `video_${Date.now()}.mp4`);
-  const tmpTranscript = path.join(tmpdir(), `transcript_${Date.now()}.txt`);
-  
-  // Download video using curl
-  await new Promise((resolve, reject) => {
-    const curl = spawn('curl', ['-L', '-o', tmpVideo, '--max-time', '120', videoUrl]);
-    curl.on('close', (code) => code === 0 ? resolve() : reject(new Error('Download failed')));
-    curl.on('error', reject);
-  });
-
   try {
-    const transcript = await transcribeVideo(tmpVideo, model);
-    return transcript;
+    await new Promise((resolve, reject) => {
+      const curl = spawn('curl', ['-L', '-o', tmpVideo, '--max-time', '120', videoUrl]);
+      curl.on('close', code => code === 0 ? resolve() : reject(new Error('Download failed')));
+      curl.on('error', reject);
+    });
+    return await transcribeVideo(tmpVideo, model);
   } finally {
-    // Cleanup
-    try { unlinkSync(tmpVideo); } catch(e) {}
-    try { unlinkSync(tmpTranscript); } catch(e) {}
+    try { unlinkSync(tmpVideo); } catch {}
   }
 }
 

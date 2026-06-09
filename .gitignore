@@ -65,3 +65,6 @@ server/src/static/
 server/src/workers/
 server/test-*.js
 test-import-sites.cjs
+
+# Rezeptbuch: stray Vite build output (server serves client/dist, not this)
+server/src/data/rezeptbuch-client/

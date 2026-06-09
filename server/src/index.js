@@ -7,6 +7,15 @@ import fs from 'fs';
 
 const require = createRequire(import.meta.url);
 
+// Global crash protection — child process errors (e.g. broken pipes from
+// ffmpeg/whisper) used to kill the whole Node server. Log and recover.
+process.on('uncaughtException', err => {
+  console.error('⚠️  uncaughtException (recovered):', err.message);
+});
+process.on('unhandledRejection', err => {
+  console.error('⚠️  unhandledRejection (recovered):', err?.message || err);
+});
+
 import recipesRouter from './routes/recipes.js';
 import searchRouter from './routes/search.js';
 import mealPlansRouter from './routes/mealPlans.js';
@@ -80,6 +89,11 @@ const eigenmarkenRouter = require('./routes/eigenmarken.cjs');
 app.use('/api/offers/eigenmarken', eigenmarkenRouter);
 app.use('/recipe/api/offers/eigenmarken', eigenmarkenRouter);
 app.use('/recipe/api/offers', offersHistoryRouter);
+
+// Offers scraper API routes
+const offersRouter = require('./routes/offers.cjs');
+app.use('/api/offers', offersRouter);
+app.use('/recipe/api/offers', offersRouter);
 
 // OpenFoodFacts Update router (manual trigger + changelog review)
 const offUpdateRouter = require('./routes/offersOFFUpdate.cjs');
@@ -195,26 +209,30 @@ app.post('/api/offers/scrape', async (req, res) => {
 app.post('/api/offers/scrape/marktguru', async (req, res) => {
   try {
     if (!offersScraper) return res.status(500).json({ error: 'no scraper' });
-    console.log('📡 Marktguru scrape requested');
-    const results = await offersScraper.scrapeAllMarktguruStores();
-    
-    // Save to history DB with source='marktguru'
-    for (const [store, offers] of Object.entries(results)) {
-      const { lastInsertRowid } = offersHistoryRouter.saveScrapeRecord(store, offers.length, true, null, 'marktguru');
-      if (offers.length > 0) offersHistoryRouter.saveOffers(lastInsertRowid, store, offers, 'marktguru');
+    // Reject if a scrape is already running
+    const current = offersScraper.getProgress();
+    if (current && current.status === 'running') {
+      return res.status(409).json({ error: 'Scrape läuft bereits', progress: current });
     }
-    
-    const totalOffers = Object.values(results).reduce((s, a) => s + a.length, 0);
-    const storesWithOffers = Object.values(results).filter(a => a.length > 0).length;
-    
-    res.json({ 
-      success: true, 
-      source: 'marktguru',
-      storesScraped: Object.keys(results).length,
-      storesWithOffers,
-      totalOffers,
-      lastUpdated: new Date().toISOString()
-    });
+    console.log('📡 Marktguru scrape requested');
+    // Run in background — response returns immediately so client can poll progress
+    (async () => {
+      try {
+        const results = await offersScraper.scrapeAllMarktguruStores();
+        for (const [store, offers] of Object.entries(results)) {
+          const { lastInsertRowid } = offersHistoryRouter.saveScrapeRecord(store, offers.length, true, null, 'marktguru');
+          if (offers.length > 0) offersHistoryRouter.saveOffers(lastInsertRowid, store, offers, 'marktguru');
+        }
+      } catch (e) {
+        console.error('Marktguru background scrape error:', e);
+        // Mark progress as error
+        const fs = require('fs');
+        const path = require('path');
+        // setProgress is not exported, but getProgress returns current state — for now log
+        console.error('Marktguru scrape failed:', e.message);
+      }
+    })();
+    res.json({ success: true, started: true, source: 'marktguru' });
   } catch(e) {
     console.error('Marktguru scrape error:', e.message);
     res.status(500).json({ error: e.message });

@@ -86,7 +86,10 @@ export default function HomePage() {
     <div className="home-page">
       <div className="page-header">
         <h1>📖 Mein Rezeptbuch</h1>
-        <button className="btn btn-primary" onClick={() => { setEditingRecipe(null); setShowRecipeModal(true); }}>+ Neues Rezept</button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <Link to="/batch" className="btn btn-secondary">📥 Import</Link>
+          <button className="btn btn-primary" onClick={() => { setEditingRecipe(null); setShowRecipeModal(true); }}>+ Neues Rezept</button>
+        </div>
       </div>
 
       <div className="controls">

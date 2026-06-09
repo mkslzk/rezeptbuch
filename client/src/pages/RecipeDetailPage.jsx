@@ -170,18 +170,18 @@ export default function RecipeDetailPage() {
         <div className="detail-sections">
           <div className="ingredients-section">
             <h2>Zutaten</h2>
-            <ul className="ingredients-list">{ingredients.map((ing, i) => (
-              <li key={i} className="ingredient-item">
-                  {(() => {
-                    const scaled = scaleAmount(ing.amount, ing.unit, servingMultiplier);
-                    const display = scaled
-                      ? (scaled.unit ? `${scaled.amount} ${scaled.unit}` : scaled.amount)
-                      : (ing.amount ? `${ing.amount} ${ing.unit}`.trim() : '');
-                    return <span className="ing-amount">{display}</span>;
-                  })()}
+            <ul className="ingredients-list">{ingredients.map((ing, i) => {
+              const scaled = scaleAmount(ing.amount, ing.unit, servingMultiplier);
+              const amount = scaled
+                ? (scaled.unit ? `${scaled.amount} ${scaled.unit}` : scaled.amount)
+                : (ing.amount ? `${ing.amount} ${ing.unit}`.trim() : '');
+              return (
+                <li key={i} className="ingredient-item">
+                  {amount && <span className="ing-amount">{amount}</span>}
                   <span className="ing-item">{ing.item}</span>
                 </li>
-            ))}</ul>
+              );
+            })}</ul>
           </div>
           <div className="steps-section">
             <h2>Zubereitung</h2>
