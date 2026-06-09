@@ -555,13 +555,7 @@ export default function ShoppingListPage() {
 
     return (
       <li className={`shopping-item ${item.checked ? 'checked' : ''} ${removingId === item.id ? 'removing' : ''}`}>
-        <label className="item-row-label">
-          <input
-            type="checkbox"
-            checked={Boolean(item.checked)}
-            onChange={e => toggleItem(item.id, e.target.checked)}
-          />
-          
+        <div className="item-row-label">
           <div className="item-text">
             <span className="item-name">{item.item}</span>
             {item.off_brand && <span className="item-brand">{item.off_brand}</span>}
@@ -576,9 +570,16 @@ export default function ShoppingListPage() {
               <span className="item-store-badge">{storeLabel}</span>
             ) : null}
           </div>
-        </label>
+                </div>
         
         <div className="item-actions-row">
+          <input
+            type="checkbox"
+            className="item-row-checkbox"
+            checked={Boolean(item.checked)}
+            onChange={e => toggleItem(item.id, e.target.checked)}
+            title="Erledigt"
+          />
           <input
             type="text"
             className="item-amount-input"

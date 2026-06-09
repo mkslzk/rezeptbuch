@@ -24,6 +24,10 @@
   --radius-lg: 12px;
 }
 
+
+/* Utility classes */
+.hidden { display: none !important; }
+
 /* ---- Reset & Base ---- */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -319,7 +323,7 @@ a:hover {
 .btn-add, .btn-add-meal {
   background: transparent;
   color: var(--color-accent);
-  border: 2px dashed var(--color-border);
+  border: 2px solid var(--color-border);
   font-size: 0.85rem;
   padding: 0.3rem 0.6rem;
   border-radius: var(--radius);
@@ -362,6 +366,43 @@ a:hover {
 .search-bar {
   flex: 1;
   min-width: 200px;
+
+/* Sort Toggle Buttons */
+.sort-toggle-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.sort-label {
+  font-size: 0.85rem;
+  color: var(--color-text-light);
+  font-family: var(--font-accent);
+  margin-right: 0.25rem;
+}
+.sort-btn {
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-paper);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sort-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-sepia);
+}
+.sort-btn.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
 }
 
 .search-bar input {
@@ -697,7 +738,7 @@ a:hover {
 
 .ingredient-item {
   padding: 0.4rem 0;
-  border-bottom: 1px dashed var(--color-border);
+  border-bottom: 1px solid var(--color-border);
   font-size: 0.95rem;
   line-height: 1.5;
 }
@@ -718,7 +759,7 @@ a:hover {
 
 .steps-list li {
   padding: 0.75rem 0;
-  border-bottom: 1px dashed var(--color-border);
+  border-bottom: 1px solid var(--color-border);
   line-height: 1.6;
   position: relative;
   padding-left: 2.5rem;
@@ -1018,7 +1059,7 @@ a:hover {
 
 .meal-slot {
   padding: 0.5rem;
-  border-top: 1px dashed var(--color-border);
+  border-top: 1px solid var(--color-border);
   min-height: 70px;
 }
 
@@ -1203,7 +1244,7 @@ a:hover {
 
 .shopping-item {
   padding: 0.6rem 1rem;
-  border-bottom: 1px dashed var(--color-border);
+  border-bottom: 1px solid var(--color-border);
   transition: background 0.2s;
 }
 
@@ -1439,7 +1480,7 @@ a:hover {
   text-align: center;
   padding: 3rem 2rem;
   background: var(--color-paper);
-  border: 3px dashed var(--color-border);
+  border: 3px solid var(--color-border);
   border-radius: var(--radius-lg);
   margin: 2rem 0;
 }
@@ -1869,7 +1910,7 @@ a:hover {
 
 .btn-add {
   background: var(--color-sepia);
-  border: 2px dashed var(--color-border);
+  border: 2px solid var(--color-border);
   color: var(--color-brown);
   padding: 0.5rem 1rem;
   border-radius: var(--radius);
@@ -2091,7 +2132,7 @@ a:hover {
 /* ===== Ingredient Scaling Display ===== */
 .ingredients-list li {
   padding: 0.4rem 0;
-  border-bottom: 1px dashed var(--color-border);
+  border-bottom: 1px solid var(--color-border);
   line-height: 1.5;
 }
 
@@ -2851,7 +2892,7 @@ a:hover {
   padding: 0.3rem 0.5rem;
   font-size: 0.85rem;
   background: var(--color-sepia);
-  border: 1px dashed var(--color-border);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
   cursor: pointer;
 }

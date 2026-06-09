@@ -19,147 +19,136 @@ function saveConfig(cfg) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
 }
 
-// GET /api/settings/llm - Get LLM config
+// Supported LLM providers
+const PROVIDERS = {
+  openrouter: { name: 'OpenRouter', defaultEndpoint: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'openai/gpt-4o-mini' },
+  anthropic: { name: 'Anthropic', defaultEndpoint: 'https://api.anthropic.com/v1/messages', defaultModel: 'claude-sonnet-4-20250514' },
+  openai: { name: 'OpenAI', defaultEndpoint: 'https://api.openai.com/v1/chat/completions', defaultModel: 'gpt-4o-mini' },
+  gemini: { name: 'Google Gemini', defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', defaultModel: 'gemini-2.0-flash' },
+  ollama: { name: 'Ollama (Lokal)', defaultEndpoint: 'http://localhost:11434/api/chat', defaultModel: 'llama3.2' },
+  minimax: { name: 'MiniMax', defaultEndpoint: 'https://api.minimax.chat/v1/chat/completions', defaultModel: 'MiniMax-Text-01' },
+  custom: { name: 'Custom Endpoint', defaultEndpoint: '', defaultModel: '' }
+};
+
+// Mask an API key, showing only last 4 chars
+function maskKey(key) {
+  if (!key) return '';
+  return key.startsWith('***') ? key : (key ? '***' + key.slice(-4) : '');
+}
+
+// Mask all apiKey fields in config for GET response
+function maskConfig(cfg) {
+  const masked = JSON.parse(JSON.stringify(cfg));
+  for (const key of Object.keys(PROVIDERS)) {
+    if (masked[key]?.apiKey) {
+      masked[key].apiKey = maskKey(masked[key].apiKey);
+    }
+  }
+  return masked;
+}
+
+// GET /api/settings/llm - Get LLM config (apiKey masked)
 router.get('/llm', (req, res) => {
   const cfg = getConfig();
-  // Don't expose API key
-  if (cfg.minimax?.apiKey) {
-    cfg.minimax.apiKey = cfg.minimax.apiKey ? '***' + cfg.minimax.apiKey.slice(-4) : '';
-  }
-  res.json(cfg);
+  res.json(maskConfig(cfg));
 });
 
 // PUT /api/settings/llm - Update LLM config
 router.put('/llm', (req, res) => {
   const cfg = getConfig();
   const updates = req.body;
-  
+
   if (updates.provider !== undefined) cfg.provider = updates.provider;
-  if (updates.ollama) {
-    cfg.ollama = { ...cfg.ollama, ...updates.ollama };
-  }
-  if (updates.minimax) {
-    cfg.minimax = { ...cfg.minimax, ...updates.minimax };
-    // Restore full API key if masked
-    if (cfg.minimax.apiKey?.startsWith('***')) {
-      const old = getConfig();
-      cfg.minimax.apiKey = old.minimax?.apiKey || '';
+
+  // Update per-provider config
+  for (const key of Object.keys(PROVIDERS)) {
+    if (updates[key]) {
+      cfg[key] = { ...cfg[key], ...updates[key] };
+      // Restore full API key if client sent a masked value
+      if (cfg[key].apiKey?.startsWith('***')) {
+        const old = getConfig();
+        cfg[key].apiKey = old[key]?.apiKey || '';
+      }
     }
   }
-  
+
   saveConfig(cfg);
-  res.json({ success: true, config: cfg });
+  res.json({ success: true, config: maskConfig(cfg) });
 });
 
-// POST /api/settings/llm/test - Test LLM connection
+// POST /api/settings/llm/test - Test LLM connection for a provider
 router.post('/llm/test', async (req, res) => {
   const cfg = getConfig();
   const { provider } = req.body || {};
   const targetProvider = provider || cfg.provider;
+  const pCfg = cfg[targetProvider] || {};
 
-  if (targetProvider === 'ollama') {
-    // Test Ollama connection
-    const endpoint = cfg.ollama?.endpoint || 'http://localhost:11434';
-    try {
-      const result = await testOllama(endpoint);
-      res.json({ success: true, provider: 'ollama', ...result });
-    } catch (e) {
-      res.json({ success: false, provider: 'ollama', error: e.message, endpoint });
-    }
-  } else if (targetProvider === 'minimax') {
-    // Test MiniMax connection
-    const apiKey = cfg.minimax?.apiKey;
-    if (!apiKey || apiKey === '' || apiKey.startsWith('***')) {
-      // Try to get full key from current config
-      const fullCfg = getConfig();
-      if (!fullCfg.minimax?.apiKey) {
-        return res.json({ success: false, provider: 'minimax', error: 'API Key nicht gesetzt' });
-      }
-      cfg.minimax.apiKey = fullCfg.minimax.apiKey;
-    }
-    
-    try {
-      const result = await testMinimax(cfg.minimax);
-      res.json({ success: true, provider: 'minimax', ...result });
-    } catch (e) {
-      res.json({ success: false, provider: 'minimax', error: e.message });
-    }
-  } else {
-    res.status(400).json({ error: 'Unknown provider: ' + targetProvider });
+  if (!pCfg || !PROVIDERS[targetProvider]) {
+    return res.status(400).json({ error: 'Unknown provider: ' + targetProvider });
+  }
+
+  // Get full apiKey for testing (restore from disk if masked)
+  let apiKey = pCfg.apiKey || '';
+  if (apiKey.startsWith('***')) {
+    const fullCfg = getConfig();
+    apiKey = fullCfg[targetProvider]?.apiKey || '';
+  }
+
+  const endpoint = pCfg.endpoint || PROVIDERS[targetProvider].defaultEndpoint;
+  const model = pCfg.model || PROVIDERS[targetProvider].defaultModel;
+
+  if (!apiKey && targetProvider !== 'ollama' && targetProvider !== 'custom') {
+    return res.json({ success: false, error: 'API Key nicht gesetzt', provider: targetProvider });
+  }
+
+  try {
+    const result = await testLLMProvider(targetProvider, endpoint, apiKey, model);
+    res.json({ success: true, provider: targetProvider, ...result });
+  } catch (e) {
+    res.json({ success: false, provider: targetProvider, error: e.message, endpoint });
   }
 });
 
-function testOllama(endpoint) {
-  return new Promise((resolve, reject) => {
-    const req = spawn('curl', ['-s', '-m', '5', `${endpoint}/api/tags`]);
-    let output = '';
-    let error = '';
-    
-    req.stdout.on('data', d => output += d.toString());
-    req.stderr.on('data', d => error += d.toString());
-    
-    req.on('close', code => {
-      if (code === 0) {
-        try {
-          const tags = JSON.parse(output);
-          const models = tags.models?.map(m => m.name) || [];
-          resolve({ endpoint, models, modelCount: models.length });
-        } catch (e) {
-          resolve({ endpoint, models: [], modelCount: 0 });
-        }
-      } else {
-        reject(new Error(error || 'Connection failed (exit ' + code + ')'));
-      }
-    });
-    
-    req.on('error', e => reject(e));
-  });
-}
+async function testLLMProvider(provider, endpoint, apiKey, model) {
+  const messages = [{ role: 'user', content: 'Say "OK" if you can read this.' }];
+  let headers = { 'Content-Type': 'application/json' };
 
-function testMinimax(config) {
-  return new Promise((resolve, reject) => {
-    const req = spawn('curl', [
-      '-s', '-m', '10',
-      '-H', `Authorization: Bearer ${config.apiKey}`,
-      '-H', 'Content-Type: application/json',
-      '-X', 'POST',
-      `${config.baseUrl || 'https://api.minimax.chat/v1'}/text/chatcompletion_v2`,
-      '-d', JSON.stringify({
-        model: config.model || 'MiniMax-Text-01',
-        messages: [{ role: 'user', content: 'Say "OK" if you can read this.' }]
-      })
-    ]);
-    
-    let output = '';
-    let error = '';
-    
-    req.stdout.on('data', d => output += d.toString());
-    req.stderr.on('data', d => error += d.toString());
-    
-    req.on('close', code => {
-      if (code === 0) {
-        try {
-          const resp = JSON.parse(output);
-          if (resp.choices?.[0]?.message?.content) {
-            resolve({ model: config.model, response: resp.choices[0].message.content });
-          } else {
-            resolve({ model: config.model, raw: output.substring(0, 200) });
-          }
-        } catch (e) {
-          resolve({ model: config.model, raw: output.substring(0, 200) });
-        }
-      } else {
-        try {
-          const errResp = JSON.parse(output);
-          reject(new Error(errResp.base_error?.message || errResp.error?.message || output.substring(0, 100)));
-        } catch (e) {
-          reject(new Error(error || 'Request failed (exit ' + code + ')'));
-        }
-      }
-    });
-    
-    req.on('error', e => reject(e));
-  });
+  if (provider === 'openrouter') {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+    headers['HTTP-Referer'] = 'https://rezeptbuch.local';
+    headers['X-Title'] = 'Rezeptbuch';
+  } else if (provider === 'anthropic') {
+    headers['x-api-key'] = apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+  } else if (provider === 'openai' || provider === 'gemini') {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  } else if (provider === 'minimax') {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  } else if (provider === 'custom') {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
+  let body;
+  if (provider === 'anthropic') {
+    body = { model, max_tokens: 10, messages };
+  } else {
+    body = { model, messages, max_tokens: 50 };
+  }
+
+  const resp = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+  const text = await resp.text();
+
+  if (!resp.ok) {
+    try { const e = JSON.parse(text); throw new Error(e.error?.message || e.message || text.slice(0, 100)); }
+    catch (e) { if (e.message !== text.slice(0, 100)) throw e; throw new Error(text.slice(0, 200)); }
+  }
+
+  const data = JSON.parse(text);
+  if (provider === 'anthropic') {
+    return { model, response: data.content?.[0]?.text || 'OK' };
+  } else {
+    return { model, response: data.choices?.[0]?.message?.content || 'OK' };
+  }
 }
 
 module.exports = router;

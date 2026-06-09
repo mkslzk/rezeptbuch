@@ -659,6 +659,37 @@ export default function AdminPanel() {
   const [logsOpen, setLogsOpen] = useState(false);
   const [pollInterval, setPollInterval] = useState(null);
 
+  // Top action bar state (for OFF + scrape buttons)
+  const [scrapeLoading, setScrapeLoading] = useState(false);
+  const [scrapeProg, setScrapeProg] = useState(null);
+  const [scrapeStatus, setScrapeStatus] = useState(null);
+
+  const handleScrape = async () => {
+    setScrapeLoading(true);
+    setScrapeProg({ stage: 'start', status: 'running', message: 'Starte Scrape...', progress: 0 });
+    const pollId = setInterval(async () => {
+      try {
+        const r = await fetch(`${API_OFFERS}/scrape/progress`);
+        const d = await r.json();
+        if (d.progress) {
+          setScrapeProg(d.progress);
+          if (d.progress.status !== 'running') {
+            clearInterval(pollId);
+            setScrapeProg(null);
+            const isError = d.progress.status === 'error';
+            const msg = d.progress.message || (isError ? 'Fehler beim Scrape' : 'Fertig');
+            setScrapeStatus({ type: isError ? 'error' : 'success', msg: isError ? `❌ ${msg}` : `✅ ${msg} (${d.progress.stats?.activeStores ?? '?'}/${d.progress.stats?.totalStores ?? '?'} Stores aktiv)` });
+            setTimeout(() => setScrapeStatus(null), 8000);
+          }
+        }
+      } catch {}
+    }, 500);
+    setScrapeStatus({ type: 'loading', msg: '🛒 Direkt-Scrape läuft…' });
+    try { await fetch(`${API_OFFERS}/scrape`, { method: 'POST' }); }
+    catch (e) { setScrapeStatus({ type: 'error', msg: '❌ Scrape-Request fehlgeschlagen: ' + e.message }); setTimeout(() => setScrapeStatus(null), 8000); }
+    finally { setScrapeLoading(false); }
+  };
+
   const loadStatus = useCallback(async () => {
     try {
       const r = await fetch(`${API_BASE}/status`);
@@ -744,6 +775,33 @@ export default function AdminPanel() {
   return (
     <div className="admin-panel">
       <h1 className="admin-title">🔧 Admin Panel</h1>
+
+      {/* Top Action Bar */}
+      <div className="admin-top-actions">
+        <div className="admin-top-actions-row">
+          <button
+            className="admin-btn admin-btn-primary"
+            onClick={() => handleTriggerUpdate(false)}
+            disabled={loading}
+            title="OpenFoodFacts Datenbank aktualisieren"
+          >
+            📦 OFF aktualisieren
+          </button>
+          <button
+            className="admin-btn admin-btn-secondary"
+            onClick={handleScrape}
+            disabled={scrapeLoading}
+            title="Angebote direkt scrapen"
+          >
+            {scrapeLoading ? '⏳' : '🛒'} Angebote scrapen
+          </button>
+        </div>
+        {scrapeStatus && (
+          <div className={`status-message ${scrapeStatus.type}`} style={{ marginTop: '0.5rem' }}>
+            {scrapeStatus.msg}
+          </div>
+        )}
+      </div>
 
       {/* Section 1: OFF Update */}
       <Section title="📦 OpenFoodFacts Datenbank" icon="📦" defaultOpen={true}>

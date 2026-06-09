@@ -51,9 +51,9 @@ async function extractRecipeFromTranscript(input, platform = 'tiktok') {
   return extractWithKeywords(data, platform);
 }
 
-async function extractWithOllama(data, platform) {
-  const { spawn } = require('child_process');
+const { chatJSON } = require('./llmClient.cjs');
 
+async function extractWithOllama(data, platform) {
   // Prefer description (real recipe text) over transcript (often hallucinated by Whisper)
   const description = (data.description || '').trim();
   const transcript = (data.transcript || '').trim();
@@ -95,45 +95,18 @@ Quelltext:
 ${source}
 `;
 
-  return new Promise((resolve, reject) => {
-    const ollama = spawn('curl', [
-      '-s', 'http://localhost:11434/api/generate',
-      '-X', 'POST',
-      '-H', 'Content-Type: application/json',
-      '-d', JSON.stringify({
-        model: 'llama3.2:3b',
-        prompt: prompt,
-        stream: false,
-        options: { temperature: 0.1, num_predict: 800 }
-      })
-    ]);
+  const recipe = await chatJSON([
+    { role: 'user', content: prompt }
+  ], { maxTokens: 1000 });
 
-    let output = '';
-    ollama.stdout.on('data', d => { output += d.toString(); });
-    ollama.on('error', e => reject(e));
-    ollama.on('close', code => {
-      if (code !== 0) return reject(new Error('Ollama exit ' + code));
-      try {
-        const parsed = JSON.parse(output);
-        const text = parsed.response || '';
-        // Pull the first {...} block (may be wrapped in markdown)
-        const match = text.match(/\{[\s\S]*\}/);
-        if (!match) return reject(new Error('No valid JSON in Ollama response'));
-        const recipe = JSON.parse(match[0]);
-        // Normalize shape
-        return resolve({
-          title: recipe.title || '',
-          ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients : [],
-          steps: Array.isArray(recipe.steps) ? recipe.steps : [],
-          servings: recipe.servings ?? null,
-          prepTime: recipe.prepTime ?? null,
-          cookTime: recipe.cookTime ?? null
-        });
-      } catch (e) {
-        reject(new Error('Failed to parse Ollama response: ' + e.message));
-      }
-    });
-  });
+  return {
+    title: recipe.title || '',
+    ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients : [],
+    steps: Array.isArray(recipe.steps) ? recipe.steps : [],
+    servings: recipe.servings ?? null,
+    prepTime: recipe.prepTime ?? null,
+    cookTime: recipe.cookTime ?? null
+  };
 }
 
 function extractWithKeywords(data, platform = 'tiktok') {

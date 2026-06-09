@@ -135,11 +135,15 @@ export default function HomePage() {
           <Link key={recipe.id} to={`/recipe/${recipe.id}`} className="recipe-card">
             {viewMode === 'grid' ? (
               <div className="card-inner">
-                {recipe.image_url ? (
-                  <img src={recipe.image_url} alt={recipe.title} className="card-image" />
-                ) : (
-                  <div className="card-image placeholder">🍳</div>
-                )}
+                {recipe.image_url?.trim() ? (
+                  <img
+                    src={recipe.image_url}
+                    alt={recipe.title}
+                    className="card-image"
+                    onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }}
+                  />
+                ) : null}
+                <div className={`card-image placeholder${recipe.image_url?.trim() ? ' hidden' : ''}`}>🍳</div>
                 <div className="card-content">
                   <h3>{recipe.title}</h3>
                   {recipe.category && <span className="card-category">{getCategoryLabel(recipe.category) || recipe.category}</span>}
