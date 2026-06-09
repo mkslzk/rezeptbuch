@@ -79,6 +79,46 @@ export default function RecipeDetailPage() {
     } catch (err) { console.error('Failed to set rating:', err); }
   }
 
+  function handleExportJson() {
+    if (!recipe) return;
+    const exportData = {
+      title: recipe.title,
+      description: recipe.description,
+      image_url: recipe.image_url,
+      category: recipe.category,
+      servings: recipe.servings,
+      prep_time: recipe.prep_time,
+      cook_time: recipe.cook_time,
+      source_url: recipe.source_url,
+      ingredients: ingredients,
+      steps: steps,
+      tags: tags,
+      exported_from: 'MOCA',
+      exported_at: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const slug = recipe.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    a.download = `${slug}_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleShareLink() {
+    const shareUrl = `${window.location.origin}/recipe/shared/${id}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        alert('Link kopiert! 📋');
+      }).catch(() => {
+        prompt('Link kopieren:', shareUrl);
+      });
+    } else {
+      prompt('Link kopieren:', shareUrl);
+    }
+  }
+
   async function handleDuplicate() {
     if (!recipe) return;
     const payload = {
@@ -115,9 +155,12 @@ export default function RecipeDetailPage() {
             ))}
             {recipe.rating_count > 0 && <span className="rating-count" title={`${recipe.rating_count} Bewertung${recipe.rating_count > 1 ? 'en' : ''}`}>({Number(recipe.rating).toFixed(1)} · {recipe.rating_count})</span>}
           </div>
+          <button className="btn btn-accent" onClick={() => navigate(`/kitchen/${id}`)}>👨‍🍳 Kochmodus</button>
           <button className="btn btn-accent" onClick={() => setShowAddToMealPlan(!showAddToMealPlan)}>📅 Zu Essensplan</button>
           <button className="btn btn-secondary" onClick={handleDuplicate}>📋 Duplizieren</button>
           <button className="btn btn-secondary" onClick={() => setShowEditModal(true)}>✏️ Bearbeiten</button>
+          <button className="btn btn-secondary" onClick={handleExportJson} title="Als JSON exportieren">📤 Export</button>
+          <button className="btn btn-secondary" onClick={handleShareLink} title="Link teilen">🔗 Teilen</button>
           <button className="btn btn-danger" onClick={handleDelete}>🗑 Löschen</button>
         </div>
         {showAddToMealPlan && (

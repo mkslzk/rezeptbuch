@@ -25,6 +25,17 @@ router.get('/recipes/:id', (req, res) => {
   }
 });
 
+// GET /api/recipes/shared/:id - Public read-only access
+router.get('/recipes/shared/:id', (req, res) => {
+  try {
+    const recipe = db.prepare('SELECT id, title, description, image_url, category, servings, prep_time, cook_time, source_url, ingredients, steps, tags, rating, created_at FROM recipes WHERE id = ?').get(req.params.id);
+    if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
+    res.json(recipe);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/recipes
 router.post('/recipes', (req, res) => {
   try {

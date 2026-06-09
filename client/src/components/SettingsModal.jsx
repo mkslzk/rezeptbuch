@@ -3,7 +3,7 @@ import { useTheme } from '../context/ThemeContext.jsx';
 import { getThemeList } from '../config/themes.js';
 
 export default function SettingsModal({ isOpen, onClose, settings, onSaveSettings }) {
-  const { currentTheme, changeTheme } = useTheme();
+  const { currentTheme, changeTheme, colorMode, changeColorMode, effectiveColorMode } = useTheme();
   const [activeTab, setActiveTab] = useState('theme');
   const [plz, setPlz] = useState(settings?.plz || '');
   const [eigenmarken, setEigenmarken] = useState([]);
@@ -229,6 +229,43 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
                 ))}
               </div>
               <p className="theme-name-display">Aktuelles Theme: <strong>{themes.find(t => t.id === currentTheme)?.name || currentTheme}</strong></p>
+              
+              {/* Dark Mode Toggle */}
+              <div className="dark-mode-section" style={{marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)'}}>
+                <h4 style={{margin: '0 0 0.5rem', fontSize: '0.9rem', color: 'var(--color-text-light)'}}>🌓 Farbmodus</h4>
+                <div className="dark-mode-toggle" style={{display: 'flex', gap: '0.5rem'}}>
+                  {[
+                    { value: 'light', label: '☀️ Hell', desc: 'Immer hell' },
+                    { value: 'system', label: '🔄 Auto', desc: 'Folgt System' },
+                    { value: 'dark', label: '🌙 Dunkel', desc: 'Immer dunkel' }
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      className={`dark-mode-btn ${colorMode === opt.value ? 'active' : ''}`}
+                      onClick={() => changeColorMode(opt.value)}
+                      title={opt.desc}
+                      style={{
+                        flex: 1,
+                        padding: '0.6rem 0.8rem',
+                        borderRadius: 'var(--radius)',
+                        border: colorMode === opt.value ? '2px solid var(--color-accent)' : '1px solid var(--color-border)',
+                        background: colorMode === opt.value ? 'var(--color-accent-light)' : 'var(--color-paper)',
+                        color: colorMode === opt.value ? 'var(--color-brown-dark)' : 'var(--color-text)',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: colorMode === opt.value ? '600' : '400',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p style={{margin: '0.4rem 0 0', fontSize: '0.75rem', color: 'var(--color-text-light)'}}>
+                  {effectiveColorMode === 'dark' ? '🌙 Dunkelmodus aktiv' : '☀️ Hellmodus aktiv'}
+                  {colorMode === 'system' && ' (Systemeinstellung)'}
+                </p>
+              </div>
             </div>
           )}
           

@@ -8,6 +8,8 @@ import ShoppingListPage from './pages/ShoppingListPage';
 import AdminPanel from './pages/AdminPanel.jsx';
 import BatchImportPage from './pages/BatchImportPage.jsx';
 import OnboardingPage from './pages/OnboardingPage.jsx';
+import SharedRecipePage from './pages/SharedRecipePage.jsx';
+import KitchenModePage from './pages/KitchenModePage.jsx';
 import ImportStatusBanner from './components/ImportStatusBanner.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
@@ -92,6 +94,8 @@ function App() {
               <Route path="/shopping-list" element={<ShoppingListPage />} />
               <Route path="/admin" element={<AdminPanel />} />
               <Route path="/batch" element={<BatchImportPage />} />
+              <Route path="/shared/:id" element={<SharedRecipePage />} />
+              <Route path="/kitchen/:id" element={<KitchenModePage />} />
             </Routes>
           </main>
         </div>

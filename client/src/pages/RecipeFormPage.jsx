@@ -33,6 +33,7 @@ export default function RecipeFormPage() {
   const [imagePreview, setImagePreview] = useState('');
   const [uploadedImageFile, setUploadedImageFile] = useState(null);
   const [importingVideo, setImportingVideo] = useState(false);
+  const jsonFileInputRef = useRef(null);
   const [videoImportStatus, setVideoImportStatus] = useState(null);
   const [videoImportProg, setVideoImportProg] = useState(null);
   const [activeJobId, setActiveJobId] = useState(() => sessionStorage.getItem('videoImportJobId') || null);
