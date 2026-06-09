@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  rezeptbuch:
+  moca:
     build: .
-    container_name: rezeptbuch
+    container_name: moca
     ports:
       - "3001:3001"
     volumes:

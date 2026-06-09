@@ -7,6 +7,7 @@ import MealPlanPage from './pages/MealPlanPage';
 import ShoppingListPage from './pages/ShoppingListPage';
 import AdminPanel from './pages/AdminPanel.jsx';
 import BatchImportPage from './pages/BatchImportPage.jsx';
+import OnboardingPage from './pages/OnboardingPage.jsx';
 import ImportStatusBanner from './components/ImportStatusBanner.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
@@ -15,9 +16,12 @@ import './App.css';
 function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState({ plz: '' });
+  const [onboardingDone, setOnboardingDone] = useState(
+    localStorage.getItem('moca_onboarding_done') === 'true'
+  );
 
   useEffect(() => {
-    const saved = localStorage.getItem('rezeptbuch_settings');
+    const saved = localStorage.getItem('moca_settings');
     if (saved) {
       try { setSettings(JSON.parse(saved)); } catch {}
     }
@@ -26,19 +30,33 @@ function App() {
       .then(serverSettings => {
         const newSettings = { plz: serverSettings.plz || '' };
         setSettings(newSettings);
-        localStorage.setItem('rezeptbuch_settings', JSON.stringify(newSettings));
+        localStorage.setItem('moca_settings', JSON.stringify(newSettings));
       })
       .catch(() => {});
   }, []);
 
   function handleSaveSettings(newSettings) {
     setSettings(newSettings);
-    localStorage.setItem('rezeptbuch_settings', JSON.stringify(newSettings));
+    localStorage.setItem('moca_settings', JSON.stringify(newSettings));
     fetch('/recipe/api/offers/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newSettings)
     }).catch(() => {});
+  }
+
+  function handleOnboardingComplete() {
+    setOnboardingDone(true);
+    window.location.reload();
+  }
+
+  // Show onboarding on first run
+  if (!onboardingDone) {
+    return (
+      <ThemeProvider>
+        <OnboardingPage onComplete={handleOnboardingComplete} />
+      </ThemeProvider>
+    );
   }
 
   return (
@@ -47,7 +65,7 @@ function App() {
         <div className="app">
           <header className="header">
             <div className="header-inner">
-              <a href="/recipe" className="logo">🍳 Rezeptbuch</a>
+              <a href="/recipe" className="logo">🍳 MOCA</a>
               <nav className="nav">
                 <a href="/recipe"> Rezepte</a>
                 <a href="/recipe/meal-plan"> 📅 Essensplan</a>

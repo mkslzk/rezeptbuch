@@ -6,7 +6,7 @@ import fs from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '..', 'data');
-const dbPath = path.join(dataDir, 'rezeptbuch.db');
+const dbPath = path.join(dataDir, 'moca.db');
 
 export let db;
 

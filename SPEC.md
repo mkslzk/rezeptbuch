@@ -1,4 +1,4 @@
-# Rezeptbuch – Projektdokumentation
+# MOCA – Projektdokumentation
 
 > **Stand:** 18.05.2026 | **Version:** 1.0 | **Status:** Aktiv
 
@@ -20,7 +20,7 @@
 
 ## 1. Überblick
 
-**Rezeptbuch** ist eine vollwertige Rezeptverwaltung mit Essensplan und Einkaufslisten-Funktion.
+**MOCA** ist eine vollwertige Rezeptverwaltung mit Essensplan und Einkaufslisten-Funktion.
 
 ### Was es kann
 - Rezepte erstellen, bearbeiten, importieren und löschen
@@ -50,7 +50,7 @@
 ## 3. Projektstruktur
 
 ```
-rezeptbuch/
+moca/
 ├── client/                     # React Frontend
 │   └── src/
 │       ├── components/         # UI-Komponenten
@@ -96,7 +96,7 @@ rezeptbuch/
 │       │   ├── recipeFromVideo.cjs     # LLM-Rezept-Extraktion
 │       │   └── offersScraper.cjs   # Angebote-Scraper
 │       ├── data/
-│       │   ├── rezeptbuch.db       # Haupt-SQLite-DB
+│       │   ├── moca.db       # Haupt-SQLite-DB
 │       │   ├── off.db              # OFF-FTS5-Datenbank (298k Produkte)
 │       │   ├── learned-products.json   # Gelernte Produkte
 │       │   ├── llm-config.json     # ⚙️ LLM-Konfiguration
@@ -109,7 +109,7 @@ rezeptbuch/
 
 ## 4. Datenbanken
 
-### 4.1 `rezeptbuch.db` (Hauptdatenbank)
+### 4.1 `moca.db` (Hauptdatenbank)
 
 Tables:
 - `recipes` – Rezepte
@@ -418,11 +418,11 @@ Fallback: Keyword-Extraktion ohne LLM.
 
 ### Lokale Entwicklung
 ```bash
-cd rezeptbuch/server
+cd moca/server
 npm install
 node src/index.js          # Server auf Port 3001
 
-cd rezeptbuch/client
+cd moca/client
 npm install
 npm run dev                # Vite Dev Server auf Port 5173
 ```

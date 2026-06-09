@@ -1,5 +1,5 @@
 // Theme Configuration
-// Modular theming system for Rezeptbuch
+// Modular theming system for MOCA
 // Based on trending food/culinary color palettes
 
 export const THEMES = {

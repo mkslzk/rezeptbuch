@@ -3,7 +3,7 @@
  * Speichert häufig genutzte Einkaufslisten-Einträge in localStorage
  */
 
-const LEARNING_KEY = 'rezeptbuch-off-learning';
+const LEARNING_KEY = 'moca-off-learning';
 const MAX_LEARNED_ITEMS = 100;
 const USAGE_DECAY_DAYS = 30; // Items die länger nicht verwendet werden, werden niedriger priorisiert
 

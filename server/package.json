@@ -1,7 +1,7 @@
 {
-  "name": "rezeptbuch-server",
+  "name": "moca-server",
   "version": "1.0.0",
-  "description": "Rezeptbuch Backend API",
+  "description": "MOCA Backend API",
   "main": "src/index.js",
   "type": "module",
   "scripts": {

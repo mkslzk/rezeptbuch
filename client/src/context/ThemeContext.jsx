@@ -9,7 +9,7 @@ export function ThemeProvider({ children }) {
 
   // Load theme from localStorage on mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem('rezeptbuch-theme');
+    const savedTheme = localStorage.getItem('moca-theme');
     if (savedTheme) {
       setCurrentTheme(savedTheme);
     }
@@ -42,7 +42,7 @@ export function ThemeProvider({ children }) {
     root.setAttribute('data-theme', theme.id);
     
     // Save to localStorage
-    localStorage.setItem('rezeptbuch-theme', currentTheme);
+    localStorage.setItem('moca-theme', currentTheme);
   }, [currentTheme, isLoaded]);
 
   const changeTheme = (themeId) => {

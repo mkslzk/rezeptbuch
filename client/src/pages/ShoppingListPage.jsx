@@ -32,7 +32,7 @@ const CATEGORY_LABELS = {
   sonstiges: '📦 Sonstiges'
 };
 
-const SESSION_KEY = 'rezeptbuch-last-plan';
+const SESSION_KEY = 'moca-last-plan';
 
 // ============================================================
 // FUZZY MATCHING

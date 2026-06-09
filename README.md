@@ -1,6 +1,6 @@
-# 🍳 Rezeptbuch
+# 🍳 MOCA
 
-Dein persönliches deutsches Rezeptbuch – mit KI-gestützter Rezept-Extraktion aus TikTok/Instagram, automatischer Preisvergleich und smarter Einkaufsliste.
+Dein persönliches deutsches MOCA – mit KI-gestützter Rezept-Extraktion aus TikTok/Instagram, automatischer Preisvergleich und smarter Einkaufsliste.
 
 ## ✨ Features
 
@@ -18,8 +18,8 @@ Dein persönliches deutsches Rezeptbuch – mit KI-gestützter Rezept-Extraktion
 ### Mit Docker (empfohlen)
 
 ```bash
-git clone https://github.com/mkslzk/rezeptbuch.git
-cd rezeptbuch
+git clone https://github.com/mkslzk/moca.git
+cd moca
 docker compose up -d
 # Öffne http://localhost:3001
 ```

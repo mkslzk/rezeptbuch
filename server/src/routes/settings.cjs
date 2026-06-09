@@ -115,8 +115,8 @@ async function testLLMProvider(provider, endpoint, apiKey, model) {
 
   if (provider === 'openrouter') {
     headers['Authorization'] = `Bearer ${apiKey}`;
-    headers['HTTP-Referer'] = 'https://rezeptbuch.local';
-    headers['X-Title'] = 'Rezeptbuch';
+    headers['HTTP-Referer'] = 'https://moca.local';
+    headers['X-Title'] = 'MOCA';
   } else if (provider === 'anthropic') {
     headers['x-api-key'] = apiKey;
     headers['anthropic-version'] = '2023-06-01';
@@ -203,20 +203,25 @@ router.get('/stores', (req, res) => {
   });
 });
 
-// PUT /api/settings/stores - Update store exclusions
-// Body: { excludedStores: ['aldi', 'metro'] }
+// PUT /api/settings/stores - Update store exclusions and PLZ
+// Body: { excludedStores?: string[], plz?: string }
 router.put('/stores', (req, res) => {
   const cfg = getOffersConfig();
-  const { excludedStores } = req.body || {};
-  if (!Array.isArray(excludedStores)) {
-    return res.status(400).json({ error: 'excludedStores must be an array' });
+  const { excludedStores, plz } = req.body || {};
+
+  if (plz !== undefined) cfg.plz = String(plz).trim();
+
+  if (excludedStores !== undefined) {
+    if (!Array.isArray(excludedStores)) {
+      return res.status(400).json({ error: 'excludedStores must be an array' });
+    }
+    const validKeys = new Set([...(cfg.stores || []), ...(cfg.marktguruStores || []), ...Object.keys(STORE_LABELS)]);
+    const cleaned = excludedStores.filter(k => typeof k === 'string' && validKeys.has(k));
+    cfg.excludedStores = [...new Set(cleaned)];
   }
-  // Validate: all keys must be known
-  const validKeys = new Set([...(cfg.stores || []), ...(cfg.marktguruStores || []), ...Object.keys(STORE_LABELS)]);
-  const cleaned = excludedStores.filter(k => typeof k === 'string' && validKeys.has(k));
-  cfg.excludedStores = [...new Set(cleaned)];
+
   saveOffersConfig(cfg);
-  res.json({ success: true, excludedStores: cfg.excludedStores });
+  res.json({ success: true, plz: cfg.plz, excludedStores: cfg.excludedStores || [] });
 });
 
 // POST /api/settings/stores/reset - Reset exclusions to default (none excluded)

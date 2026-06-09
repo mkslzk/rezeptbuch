@@ -219,7 +219,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
         <div className="settings-content">
           {activeTab === 'theme' && (
             <div className="theme-settings">
-              <p className="settings-description">Wähle ein Design-Theme für dein Rezeptbuch.</p>
+              <p className="settings-description">Wähle ein Design-Theme für dein MOCA.</p>
               <div className="theme-swatches">
                 {themes.map(theme => (
                   <button key={theme.id} className={`theme-swatch ${currentTheme === theme.id ? 'active' : ''}`} onClick={() => handleThemeSelect(theme.id)} title={theme.name}>
@@ -573,9 +573,9 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
 
           {activeTab === 'about' && (
             <div className="about-settings">
-              <h3>📖 Rezeptbuch</h3>
+              <h3>📖 MOCA</h3>
               <p>Version 1.0.0</p>
-              <p className="about-desc">Dein persönliches Rezeptbuch – digital und schön.</p>
+              <p className="about-desc">Dein persönliches MOCA – digital und schön.</p>
               <div className="about-tech">
                 <span>React + Vite</span><span>Express.js</span><span>SQLite</span>
               </div>

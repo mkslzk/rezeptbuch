@@ -34,8 +34,8 @@ const PROVIDERS = {
     defaultModel: 'openai/gpt-4o-mini',
     headers: () => ({
       'Authorization': `Bearer ${getConfig().openrouter?.apiKey || ''}`,
-      'HTTP-Referer': 'https://rezeptbuch.local',
-      'X-Title': 'Rezeptbuch'
+      'HTTP-Referer': 'https://moca.local',
+      'X-Title': 'MOCA'
     })
   },
   anthropic: {
