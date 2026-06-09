@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getCategoryOptions, CATEGORY_KEYS, getCategoryLabel } from '../config/categories.js';
+import { filterCommonIngredients } from '../config/commonIngredients.js';
 
 const EMPTY_INGREDIENT = { item: '', amount: '', unit: '', category: 'produce' };
 const CATEGORY_OPTIONS = getCategoryOptions();
@@ -35,6 +36,10 @@ export default function RecipeFormPage() {
   const [videoImportStatus, setVideoImportStatus] = useState(null);
   const [videoImportProg, setVideoImportProg] = useState(null);
   const [activeJobId, setActiveJobId] = useState(() => sessionStorage.getItem('videoImportJobId') || null);
+
+// Autocomplete for common ingredients
+const [autocomplete, setAutocomplete] = useState({ items: [], activeRow: -1, activeIdx: -1 });
+const ingInputRefs = useRef([]);
 
   const STAGE_LABELS = {
     start: 'Start', extract: 'Video extrahieren', download: 'Video herunterladen',
@@ -366,6 +371,39 @@ export default function RecipeFormPage() {
   function addIngredient() { setIngredients([...ingredients, { ...EMPTY_INGREDIENT }]); }
   function removeIngredient(i) { setIngredients(ingredients.filter((_, idx) => idx !== i)); }
 
+function handleIngInputChange(i, value) {
+  updateIngredient(i, 'item', value);
+  if (value.length < 2) {
+    setAutocomplete({ items: [], activeRow: -1, activeIdx: -1 });
+    return;
+  }
+  const items = filterCommonIngredients(value, 8);
+  setAutocomplete({ items, activeRow: i, activeIdx: -1 });
+}
+
+function selectAutocomplete(rowIdx, value) {
+  updateIngredient(rowIdx, 'item', value);
+  setAutocomplete({ items: [], activeRow: -1, activeIdx: -1 });
+  ingInputRefs.current[rowIdx]?.focus();
+}
+
+function handleIngKeyDown(i, e) {
+  const { items, activeRow, activeIdx } = autocomplete;
+  if (activeRow !== i || items.length === 0) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    setAutocomplete(a => ({ ...a, activeIdx: Math.min(a.activeIdx + 1, items.length - 1) }));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    setAutocomplete(a => ({ ...a, activeIdx: Math.max(a.activeIdx - 1, -1) }));
+  } else if (e.key === 'Enter' && activeIdx >= 0) {
+    e.preventDefault();
+    selectAutocomplete(i, items[activeIdx]);
+  } else if (e.key === 'Escape') {
+    setAutocomplete({ items: [], activeRow: -1, activeIdx: -1 });
+  }
+}
+
   function updateStep(i, val) {
     const updated = [...steps];
     updated[i] = val;
@@ -519,7 +557,27 @@ export default function RecipeFormPage() {
                     {UNITS.map(u => <option key={u} value={u}>{u || '-'}</option>)}
                   </select>
                   <div className="ing-input-wrapper">
-                    <input placeholder="Mehl" value={ing.item} onChange={e => updateIngredient(i, 'item', e.target.value)} />
+                    <input
+                      ref={el => { ingInputRefs.current[i] = el; }}
+                      placeholder="Mehl"
+                      value={ing.item}
+                      onChange={e => handleIngInputChange(i, e.target.value)}
+                      onKeyDown={e => handleIngKeyDown(i, e)}
+                      onBlur={() => setTimeout(() => setAutocomplete(a => ({ ...a, activeRow: -1 })), 150)}
+                    />
+                    {autocomplete.items.length > 0 && autocomplete.activeRow === i && (
+                      <div className="ing-autocomplete">
+                        {autocomplete.items.map((item, idx) => (
+                          <div
+                            key={item}
+                            className={`ing-autocomplete-item ${idx === autocomplete.activeIdx ? 'active' : ''}`}
+                            onMouseDown={() => selectAutocomplete(i, item)}
+                          >
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {matches.length > 0 && (
                       <div className="ing-match-hint">
                         <span className="ing-match-label">Passendes Produkt:</span>
