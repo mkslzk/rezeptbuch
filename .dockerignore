@@ -1,7 +1,9 @@
 node_modules
 .git
+.gitignore
 *.log
+data/
+*.json
+!package*.json
 .env
-.env.*
-dist
-.DS_Store
+.env.example

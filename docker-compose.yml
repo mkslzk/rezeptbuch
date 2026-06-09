@@ -3,11 +3,16 @@ version: '3.8'
 services:
   rezeptbuch:
     build: .
+    container_name: rezeptbuch
     ports:
       - "3001:3001"
     volumes:
-      - ./data:/app/server/data
+      - ./data:/app/server/src/data
     environment:
       - NODE_ENV=production
-      - PORT=3001
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/recipe/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

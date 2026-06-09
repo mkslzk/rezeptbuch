@@ -68,3 +68,17 @@ test-import-sites.cjs
 
 # Rezeptbuch: stray Vite build output (server serves client/dist, not this)
 server/src/data/rezeptbuch-client/
+
+# Runtime data (never commit)
+server/src/data/learned-products.json
+server/src/data/llm-config.json
+server/src/data/offers-config.json
+server/src/data/user-preferences.json
+
+# Backup files
+*.bak
+*.backup
+
+# OS
+.DS_Store
+Thumbs.db

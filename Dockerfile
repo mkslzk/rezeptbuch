@@ -1,35 +1,26 @@
-# Stage 1: Build React client
-FROM node:20-alpine AS client-build
-
-WORKDIR /app/client
-COPY client/package*.json ./
-RUN npm ci
-
-COPY client/ ./
-RUN npm run build
-
-# Stage 2: Production server
-FROM node:20-alpine AS production
+# Rezeptbuch Dockerfile
+FROM node:22-alpine
 
 WORKDIR /app
 
-# Install better-sqlite3 (needs native build)
-RUN apk add --no-cache python3 make g++
+# Build frontend
+COPY client/package*.json client/
+RUN cd client && npm install && npm run build
 
-COPY server/package*.json ./
-RUN npm ci --omit=dev
+# Install backend dependencies
+COPY server/package*.json server/
+RUN cd server && npm install
 
-# Copy server source
-COPY server/src ./server/src/
+# Copy application code
+COPY --from=0 /app/client/dist /app/client/dist
+COPY server/src /app/server/src
+COPY server/package*.json /app/server/
 
-# Copy client build from stage 1
-COPY --from=client-build /app/client/dist ./client/dist/
+WORKDIR /app/server
 
-# Create data directory for SQLite
-RUN mkdir -p server/data
-
-# Expose port
 EXPOSE 3001
 
-# Start server
-CMD ["node", "server/src/index.js"]
+# Data directory for SQLite DB and JSON configs
+VOLUME ["/app/server/src/data"]
+
+CMD ["node", "src/index.js"]
