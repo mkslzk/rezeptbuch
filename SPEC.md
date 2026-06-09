@@ -479,6 +479,15 @@ openclaw.tail62577c.ts.net/recipe/ → localhost:3001
 
 ## Changelog
 
+### 2026-06-09
+- Batch Import: Neue Seite /batch — URLs + Videos gemischt, Live-Progress, Cancel
+- ImportStatusBanner: FAB unten rechts, Auto-Dismiss nach 30s
+- Video Import: Resume nach Reload, bessere Stage-Anzeige
+- Offers Scrape: Background-Mode (sofort 202, Polling via /scrape/progress)
+- Server: Crash-Protection (uncaughtException/unhandledRejection Handler)
+- Neues: client/src/utils/scaling.js (Portionen-Skalierung) + Unit-Tests
+- offers-config.json: excludedStores Feld
+
 ### 2026-06-05
 - Shopping List: Check-Off entfernt Artikel (DELETE mit Fade-Out + 4s Undo)
 - Shopping List: "Leeren" mit Promise.allSettled + Status-Feedback
