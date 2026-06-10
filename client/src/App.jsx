@@ -83,7 +83,7 @@ function App() {
               <Route path="/meal-plan" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <MealPlanPage />} />
               <Route path="/shopping-list" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <ShoppingListPage />} />
               <Route path="/admin" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <AdminPanel />} />
-              <Route path="/batch" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <BatchImportPage />} />
+              <Route path="/batch" element={<BatchImportPage />} />
               <Route path="/shared/:id" element={<SharedRecipePage />} />
               <Route path="/kitchen/:id" element={<KitchenModePage />} />
             </Routes>
