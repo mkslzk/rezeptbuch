@@ -34,7 +34,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
   // Load LLM config when AI tab opens
   useEffect(() => {
     if (activeTab === 'ai') {
-      fetch('/recipe/recipe/api/settings/llm')
+      fetch('/recipe/api/settings/llm')
         .then(r => r.json())
         .then(data => setLlmConfig(data))
         .catch(() => {});
@@ -44,7 +44,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
   // Load stores when Stores tab opens
   const loadStores = () => {
     setStoresLoading(true);
-    fetch('/recipe/recipe/api/settings/stores')
+    fetch('/recipe/api/settings/stores')
       .then(r => r.json())
       .then(data => {
         setStores(data.stores || []);
@@ -69,7 +69,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
     
     setStoresSaving(true);
     try {
-      const res = await fetch('/recipe/recipe/api/settings/stores', {
+      const res = await fetch('/recipe/api/settings/stores', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ excludedStores: newList })
@@ -97,7 +97,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
     if (!window.confirm('Alle Store-Ausblendungen zurücksetzen?')) return;
     setStoresSaving(true);
     try {
-      await fetch('/recipe/recipe/api/settings/stores/reset', { method: 'POST' });
+      await fetch('/recipe/api/settings/stores/reset', { method: 'POST' });
       setStores(prev => prev.map(s => ({ ...s, excluded: false })));
       setStoresStatus({ type: 'success', msg: 'Alle Stores wieder aktiv' });
     } catch (err) {
@@ -108,7 +108,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
   }
 
   const loadEigenmarken = () => {
-    fetch('/recipe/recipe/api/offers/eigenmarken')
+    fetch('/recipe/api/offers/eigenmarken')
       .then(r => r.json())
       .then(data => setEigenmarken(data.eigenmarken || []))
       .catch(() => {});
@@ -136,7 +136,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
 
   function handleAddEigenmarken() {
     if (!newEigenmarken.product_name || !newEigenmarken.reference_price) return;
-    fetch('/recipe/recipe/api/offers/eigenmarken', {
+    fetch('/recipe/api/offers/eigenmarken', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -151,7 +151,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
   }
 
   function handleDeleteEigenmarken(id) {
-    fetch(`/recipe/recipe/api/offers/eigenmarken/${id}`, { method: 'DELETE' })
+    fetch(`/recipe/api/offers/eigenmarken/${id}`, { method: 'DELETE' })
       .then(() => loadEigenmarken())
       .catch(() => {});
   }
@@ -159,7 +159,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
   // LLM handlers
   async function handleSaveLlm() {
     try {
-      const res = await fetch('/recipe/recipe/api/settings/llm', {
+      const res = await fetch('/recipe/api/settings/llm', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(llmConfig)
@@ -177,7 +177,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
     setLlmTesting(true);
     setLlmTestResult(null);
     try {
-      const res = await fetch('/recipe/recipe/api/settings/llm/test', {
+      const res = await fetch('/recipe/api/settings/llm/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider })
