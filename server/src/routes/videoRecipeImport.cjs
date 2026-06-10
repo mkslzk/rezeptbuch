@@ -10,7 +10,7 @@ const { extractRecipeFromTranscript } = require('../services/recipeFromVideo.cjs
 // Separate SQLite connection (WAL mode allows this safely).
 // Used to auto-save imported recipes so the user lands on the detail page
 // instead of having to click "Speichern" manually.
-const saveDb = new Database(path.join(__dirname, '..', 'data', 'rezeptbuch.db'));
+const saveDb = new Database(path.join(__dirname, '..', 'data', 'moca.db'));
 saveDb.pragma('journal_mode = WAL');
 
 
