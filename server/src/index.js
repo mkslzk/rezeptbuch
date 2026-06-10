@@ -30,6 +30,15 @@ initDb();
 app.use(cors());
 app.use(express.json());
 
+// Health check endpoint for Docker healthcheck
+app.get("/recipe/api/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+
 // API routes with /api prefix
 app.use('/api', recipesRouter);
 app.use('/api', searchRouter);
