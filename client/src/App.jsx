@@ -51,54 +51,48 @@ function App() {
     setOnboardingDone(true);
     window.location.reload();
   }
-
-  // Show onboarding on first run
-  if (!onboardingDone) {
-    return (
-      <ThemeProvider>
-        <OnboardingPage onComplete={handleOnboardingComplete} />
-      </ThemeProvider>
-    );
-  }
-
   return (
     <ThemeProvider>
       <BrowserRouter basename="/recipe">
-        <div className="app">
-          <header className="header">
-            <div className="header-inner">
-              <a href="/recipe" className="logo">🍳 MOCA</a>
-              <nav className="nav">
-                <a href="/recipe"> Rezepte</a>
-                <a href="/recipe/meal-plan"> 📅 Essensplan</a>
-                <a href="/recipe/shopping-list"> 🛒 Einkauf</a>
-                <a href="/recipe/admin"> 🔧 Admin</a>
-              </nav>
-              <button
-                className="settings-btn"
-                onClick={() => setShowSettings(true)}
-                title="Einstellungen"
-              >
-                ⚙️
-              </button>
-            </div>
-          </header>
-          <main className="main-content">
-            <ImportStatusBanner />
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/recipe/new" element={<RecipeFormPage />} />
-              <Route path="/recipe/:id" element={<RecipeDetailPage />} />
-              <Route path="/recipe/:id/edit" element={<RecipeFormPage />} />
-              <Route path="/meal-plan" element={<MealPlanPage />} />
-              <Route path="/shopping-list" element={<ShoppingListPage />} />
-              <Route path="/admin" element={<AdminPanel />} />
-              <Route path="/batch" element={<BatchImportPage />} />
-              <Route path="/shared/:id" element={<SharedRecipePage />} />
-              <Route path="/kitchen/:id" element={<KitchenModePage />} />
-            </Routes>
-          </main>
-        </div>
+        {!onboardingDone ? (
+          <OnboardingPage onComplete={handleOnboardingComplete} />
+        ) : (
+          <div className="app">
+            <header className="header">
+              <div className="header-inner">
+                <a href="/recipe" className="logo">🍳 MOCA</a>
+                <nav className="nav">
+                  <a href="/recipe"> Rezepte</a>
+                  <a href="/recipe/meal-plan"> 📅 Essensplan</a>
+                  <a href="/recipe/shopping-list"> 🛒 Einkauf</a>
+                  <a href="/recipe/admin"> 🔧 Admin</a>
+                </nav>
+                <button
+                  className="settings-btn"
+                  onClick={() => setShowSettings(true)}
+                  title="Einstellungen"
+                >
+                  ⚙️
+                </button>
+              </div>
+            </header>
+            <main className="main-content">
+              <ImportStatusBanner />
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/recipe/new" element={<RecipeFormPage />} />
+                <Route path="/recipe/:id" element={<RecipeDetailPage />} />
+                <Route path="/recipe/:id/edit" element={<RecipeFormPage />} />
+                <Route path="/meal-plan" element={<MealPlanPage />} />
+                <Route path="/shopping-list" element={<ShoppingListPage />} />
+                <Route path="/admin" element={<AdminPanel />} />
+                <Route path="/batch" element={<BatchImportPage />} />
+                <Route path="/shared/:id" element={<SharedRecipePage />} />
+                <Route path="/kitchen/:id" element={<KitchenModePage />} />
+              </Routes>
+            </main>
+          </div>
+        )}
         <SettingsModal
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
