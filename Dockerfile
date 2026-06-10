@@ -1,20 +1,29 @@
 # Rezeptbuch Dockerfile
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# Copy client source files
+COPY client/ /app/client/
+
+# Install dependencies and build
+WORKDIR /app/client
+RUN npm install && npm run build
+
+# === Production image ===
 FROM node:22-alpine
 
 WORKDIR /app
 
-# Build frontend
-COPY client/package*.json client/
-RUN cd client && npm install && npm run build
+# Copy built frontend from builder
+COPY --from=builder /app/client/dist /app/client/dist
 
-# Install backend dependencies
+# Copy server source and install deps
 COPY server/package*.json server/
-RUN cd server && npm install
+WORKDIR /app/server
+RUN npm install
 
-# Copy application code
-COPY --from=0 /app/client/dist /app/client/dist
 COPY server/src /app/server/src
-COPY server/package*.json /app/server/
 
 WORKDIR /app/server
 
