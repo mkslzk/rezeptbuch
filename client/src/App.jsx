@@ -60,12 +60,12 @@ function App() {
           <div className="app">
             <header className="header">
               <div className="header-inner">
-                <a href="/recipe" className="logo">🍳 MOCA</a>
+                <a href="/recipe" className="logo">🍳 <span className="logo-text">MOCA</span></a>
                 <nav className="nav">
-                  <a href="/recipe"> Rezepte</a>
-                  <a href="/recipe/meal-plan"> 📅 Essensplan</a>
-                  <a href="/recipe/shopping-list"> 🛒 Einkauf</a>
-                  <a href="/recipe/admin"> 🔧 Admin</a>
+                  <a href="/recipe"><span class="nav-text">Rezepte</span></a>
+                  <a href="/recipe/meal-plan">📅<span class="nav-text">Essensplan</span></a>
+                  <a href="/recipe/shopping-list">🛒<span class="nav-text">Einkauf</span></a>
+                  <a href="/recipe/admin">🔧<span class="nav-text">Admin</span></a>
                 </nav>
                 <button
                   className="settings-btn"

@@ -42,6 +42,8 @@ export default function OnboardingPage({ onComplete }) {
   const [provider, setProvider] = useState('ollama');
   const [apiKey, setApiKey] = useState('');
   const [customEndpoint, setCustomEndpoint] = useState('');
+  const [ollamaEndpoint, setOllamaEndpoint] = useState('http://localhost:11434');
+  const [ollamaModel, setOllamaModel] = useState('llama3.2');
   const [customModel, setCustomModel] = useState('');
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -91,7 +93,7 @@ export default function OnboardingPage({ onComplete }) {
       // Save LLM config
       const llmCfg = { provider };
       if (provider === 'ollama') {
-        llmCfg.ollama = { endpoint: 'http://localhost:11434', model: 'llama3.2', temperature: 0.1 };
+        llmCfg.ollama = { endpoint: ollamaEndpoint, model: ollamaModel, temperature: 0.1 };
       } else if (provider === 'custom') {
         llmCfg.custom = { endpoint: customEndpoint, apiKey, model: customModel };
       } else if (provider === 'minimax') {
@@ -203,7 +205,31 @@ export default function OnboardingPage({ onComplete }) {
               ))}
             </div>
             <div className="provider-config">
-              {provider !== 'ollama' && (
+              {/* Ollama: show endpoint + model */}
+              {provider === 'ollama' && (
+                <>
+                  <div className="config-field">
+                    <label>Endpoint URL:</label>
+                    <input
+                      type="url"
+                      value={ollamaEndpoint}
+                      onChange={e => setOllamaEndpoint(e.target.value)}
+                      placeholder="http://localhost:11434"
+                    />
+                  </div>
+                  <div className="config-field">
+                    <label>Modell:</label>
+                    <input
+                      type="text"
+                      value={ollamaModel}
+                      onChange={e => setOllamaModel(e.target.value)}
+                      placeholder="llama3.2"
+                    />
+                  </div>
+                </>
+              )}
+              {/* API Key for cloud providers */}
+              {provider !== 'ollama' && provider !== 'custom' && (
                 <div className="config-field">
                   <label>API Key:</label>
                   <input
@@ -214,6 +240,7 @@ export default function OnboardingPage({ onComplete }) {
                   />
                 </div>
               )}
+              {/* Custom: show endpoint + model + optional key */}
               {provider === 'custom' && (
                 <>
                   <div className="config-field">
@@ -239,7 +266,7 @@ export default function OnboardingPage({ onComplete }) {
               <button
                 className="btn btn-secondary test-btn"
                 onClick={testConnection}
-                disabled={testLoading || (provider !== 'ollama' && provider !== 'custom' && !apiKey) || (provider === 'custom' && !customEndpoint)}
+                disabled={testLoading || (provider !== 'ollama' && provider !== 'custom' && !apiKey) || (provider === 'custom' && !customEndpoint) || (provider === 'ollama' && !ollamaEndpoint)}
               >
                 {testLoading ? '⏳ Teste...' : '🔗 Verbindung testen'}
               </button>
