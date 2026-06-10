@@ -117,65 +117,6 @@
   color: var(--color-text-secondary);
   margin-top: 0.25rem;
 }
-
-/*===============================================================
-   Progress Bar
-===============================================================*/
-.off-progress {
-  background: var(--color-paper-dark);
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-
-.off-progress-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.off-progress-stage {
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: var(--color-terracotta);
-}
-
-.off-progress-message {
-  font-size: 0.85rem;
-  color: var(--color-text-secondary);
-}
-
-.off-progress-bar-container {
-  width: 100%;
-  height: 8px;
-  background: var(--color-border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.off-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, var(--color-terracotta), var(--color-terracotta-light));
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.off-progress-spinner {
-  text-align: center;
-  font-size: 1.5rem;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-.off-progress-stats {
-  margin-top: 0.5rem;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-}
-
-/*===============================================================
    Action Buttons (OFF)
 ===============================================================*/
 .off-actions {
@@ -709,6 +650,42 @@
 .record-offers-header { margin-bottom: 0.75rem; font-size: 0.9rem; }
 
 /*===============================================================
+
+/*===============================================================
+   Scrape Info Box (simple replacement for long ProgressBar)
+===============================================================*/
+.scrape-info-box {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.scrape-info-box.running {
+  background: var(--color-paper-dark);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.scrape-info-box.done {
+  background: var(--color-cream);
+  border: 1px solid var(--color-success);
+  color: var(--color-text-primary);
+}
+
+.scrape-info-box.error {
+  background: #fef2f2;
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+}
+
+.scrape-info-icon { font-size: 1rem; }
+.scrape-info-text { flex: 1; }
+.scrape-info-stats { font-weight: 600; color: var(--color-terracotta); }
+
    Responsive
 ===============================================================*/
 @media (max-width: 768px) {

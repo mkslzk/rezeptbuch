@@ -58,29 +58,20 @@ const STAGE_LABELS = {
   done: 'Fertig', error: 'Fehler'
 };
 
-function ProgressBar({ progress }) {
-  if (!progress) return null;
-  const pct = typeof progress.progress === 'number' ? progress.progress : null;
+// Simple info-box style for scrape status
+function ScrapeInfoBox({ progress, status }) {
+  if (!progress && !status) return null;
 
+  const isRunning = progress?.status === 'running';
+  const isError = progress?.status === 'error';
+  
   return (
-    <div className="off-progress">
-      <div className="off-progress-header">
-        <span className="off-progress-stage">{STAGE_LABELS[progress.stage] || progress.stage}</span>
-        <span className="off-progress-message">{progress.message}</span>
-      </div>
-      {pct !== null ? (
-        <div className="off-progress-bar-container">
-          <div className="off-progress-bar" style={{ width: `${pct}%` }} />
-        </div>
-      ) : (
-        <div className="off-progress-spinner">⏳</div>
-      )}
-      {progress.processed !== undefined && (
-        <div className="off-progress-stats">
-          {progress.processed?.toLocaleString('de-DE')} rows processed
-          {progress.german !== undefined && ` · ${progress.german?.toLocaleString('de-DE')} German`}
-        </div>
-      )}
+    <div className={`scrape-info-box ${isRunning ? 'running' : ''} ${isError ? 'error' : ''} ${!isRunning && !isError ? 'done' : ''}`}>
+      {isRunning && <span className="scrape-info-icon">⏳</span>}
+      {isError && <span className="scrape-info-icon">❌</span>}
+      {!isRunning && !isError && <span className="scrape-info-icon">✅</span>}
+      <span className="scrape-info-text">{progress?.message || status?.msg || 'Bereit'}</span>
+      {progress?.stats && <span className="scrape-info-stats">{progress.stats.activeStores}/{progress.stats.totalStores} Stores</span>}
     </div>
   );
 }
@@ -290,7 +281,7 @@ function OffersDataView() {
 
       {scrapeProg && (
         <div style={{ marginBottom: '1rem' }}>
-          <ProgressBar progress={scrapeProg} />
+          <ScrapeInfoBox progress={scrapeProg} status={scrapeStatus} />
         </div>
       )}
 
@@ -833,7 +824,7 @@ export default function AdminPanel() {
         </div>
 
         {progress && (progress.status === 'running' || progress.stage === 'start') && (
-          <ProgressBar progress={progress} />
+          <ScrapeInfoBox progress={progress} />
         )}
 
         {progress?.status === 'done' && (
