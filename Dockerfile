@@ -16,7 +16,7 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Install Python and yt-dlp for video extraction
-RUN apk add --no-cache python3 py3-pip && \
+RUN apk add --no-cache python3 py3-pip ffmpeg && \
     pip3 install --break-system-packages yt-dlp
 
 # Copy built frontend from builder
