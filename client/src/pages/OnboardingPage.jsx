@@ -263,13 +263,19 @@ export default function OnboardingPage({ onComplete }) {
                   </div>
                 </>
               )}
-              <button
-                className="btn btn-secondary test-btn"
-                onClick={testConnection}
-                disabled={testLoading || (provider !== 'ollama' && provider !== 'custom' && !apiKey) || (provider === 'custom' && !customEndpoint) || (provider === 'ollama' && !ollamaEndpoint)}
-              >
-                {testLoading ? '⏳ Teste...' : '🔗 Verbindung testen'}
-              </button>
+              {provider === 'ollama' ? (
+                <div className="test-result info" style={{fontSize: '0.8rem', color: 'var(--color-text-light)'}}>
+                  💡 Ollama läuft lokal auf deinem Rechner — kein API-Key nötig.
+                </div>
+              ) : (
+                <button
+                  className="btn btn-secondary test-btn"
+                  onClick={testConnection}
+                  disabled={testLoading || (provider !== 'ollama' && provider !== 'custom' && !apiKey) || (provider === 'custom' && !customEndpoint)}
+                >
+                  {testLoading ? '⏳ Teste...' : '🔗 Verbindung testen'}
+                </button>
+              )}
               {testResult && (
                 <div className={`test-result ${testResult.type}`}>{testResult.msg}</div>
               )}

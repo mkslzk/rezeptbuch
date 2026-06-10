@@ -4724,3 +4724,15 @@ a:hover {
   border-color: var(--color-accent, #6366f1);
   color: #fff;
 }
+
+/* Dark mode modal header */
+[data-color-mode="dark"] .modal-header h2 {
+  color: #f3f4f6;
+}
+
+/* Dark mode h3/h4 in settings content - override inline color-text-light */
+[data-color-mode="dark"] .settings-content h3,
+[data-color-mode="dark"] .settings-content h4 {
+  color: #e5e7eb !important;
+  font-weight: 600;
+}
