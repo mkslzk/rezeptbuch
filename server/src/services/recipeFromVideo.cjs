@@ -72,11 +72,11 @@ async function extractWithOllama(data, platform) {
     source = `CAPTION (kurz):\n${description.substring(0, 1000)}`;
   }
 
-  const prompt = `Du bist ein deutsches Rezept-Extraktions-System. Extrahiere aus dem folgenden Text eines ${platform === 'tiktok' ? 'TikTok' : 'Instagram'}-Rezeptvideos die Zutaten und Schritte.
+  const prompt = `Du bist ein deutsches Rezept-Extraktions-System. Extrahiere und übersetze aus dem folgenden Text eines ${platform === 'tiktok' ? 'TikTok' : 'Instagram'}-Rezeptvideos die Zutaten und Schritte ins Deutsche.
 
 Gib NUR gültiges JSON zurück (keine Erklärung, kein Markdown):
 {
-  "title": "Rezeptname",
+  "title": "Rezeptname (auf Deutsch)",
   "ingredients": ["250g Mehl", "4 Eier"],
   "steps": ["Schritt 1", "Schritt 2"],
   "servings": 4,
@@ -85,8 +85,21 @@ Gib NUR gültiges JSON zurück (keine Erklärung, kein Markdown):
 }
 
 Regeln:
-- ingredients: jede Zutat mit Menge und Einheit als ein String
-- steps: kurze, durchnummerierbare Schritte
+- Übersetze ALLE Zutaten und Schritte ins Deutsche
+- Konvertiere amerikanische Maßeinheiten in metrische:
+  * 1 cup Mehl → 140g Mehl (bei pulverförmigen Zutaten wie Mehl, Zucker, Pulver)
+  * 1 cup Butter → 225g
+  * 1 cup Zucker → 200g
+  * 1 cup Milch/Wasser → 240ml
+  * 1 cup Honig/Zucker(flüssig) → 320g
+  * 1 tbsp (Esslöffel) → 15ml
+  * 1 tsp (Teelöffel) → 5ml
+  * 1 oz (Unzen, Gewicht) → 28g
+  * 1 lb (Pfund) → 450g
+  * Fahrenheit in Celsius: (°F - 32) × 5/9
+  * 1 cup allgemein flüssig → 240ml
+- ingredients: jede Zutat mit Menge, metrischer Einheit und übersetztem Namen als ein String
+- steps: kurze, durchnummerierbare Schritte auf Deutsch
 - servings/prepTime/cookTime: null wenn unbekannt
 - Wenn der Text kein Rezept enthält, gib leere Arrays zurück
 - Halluziniere NICHTS — nur was im Text steht
