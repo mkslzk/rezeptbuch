@@ -106,6 +106,10 @@ async function chat(messages, opts = {}) {
   const providerKey = config.provider;
 
   let endpoint = PROVIDERS[providerKey]?.endpoint || provider.endpoint || '';
+  // Ollama requires /api/chat path
+  if (providerKey === 'ollama' && endpoint && !endpoint.includes('/api/chat')) {
+    endpoint = endpoint.replace(/\/$/, '') + '/api/chat';
+  }
   let model = opts.model || provider.model || PROVIDERS[providerKey]?.defaultModel || '';
   const temperature = opts.temperature ?? provider.temperature ?? 0.1;
   const maxTokens = opts.maxTokens || 800;
