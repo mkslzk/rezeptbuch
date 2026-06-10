@@ -2,6 +2,17 @@ import { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { getThemeList } from '../config/themes.js';
 
+
+const PROVIDER_TYPES = [
+  { id: 'ollama',     name: 'Ollama (Lokal)',  icon: '🖥️', desc: 'Lokal, kostenlos, privat',    needsKey: false, isLocal: true,  defaultEndpoint: 'http://localhost:11434',              defaultModel: 'llama3.2:1b' },
+  { id: 'openrouter', name: 'OpenRouter',     icon: '🌐', desc: '100+ Modelle, API-Key',       needsKey: true,  isLocal: false, defaultEndpoint: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'openai/gpt-4o-mini' },
+  { id: 'openai',     name: 'OpenAI',          icon: '🤖', desc: 'GPT-4o, GPT-4o-mini',          needsKey: true,  isLocal: false, defaultEndpoint: 'https://api.openai.com/v1/chat/completions',   defaultModel: 'gpt-4o-mini' },
+  { id: 'anthropic',  name: 'Anthropic',       icon: '🧠', desc: 'Claude Sonnet, Opus',          needsKey: true,  isLocal: false, defaultEndpoint: 'https://api.anthropic.com/v1/messages',         defaultModel: 'claude-sonnet-4-20250514' },
+  { id: 'gemini',     name: 'Google Gemini',   icon: '✨', desc: 'Gemini Flash, Pro',           needsKey: true,  isLocal: false, defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', defaultModel: 'gemini-2.0-flash' },
+  { id: 'minimax',    name: 'MiniMax',         icon: '🌏', desc: 'MiniMax Text-01',              needsKey: true,  isLocal: false, defaultEndpoint: 'https://api.minimax.chat/v1/chat/completions', defaultModel: 'MiniMax-Text-01' },
+  { id: 'custom',      name: 'Custom Endpoint',icon: '⚙️', desc: 'Beliebig, OpenAI-kompatibel', needsKey: false, isLocal: true,  defaultEndpoint: '',                                              defaultModel: '' },
+];
+
 export default function SettingsModal({ isOpen, onClose, settings, onSaveSettings }) {
   const { currentTheme, changeTheme, colorMode, changeColorMode, effectiveColorMode } = useTheme();
   const [activeTab, setActiveTab] = useState('theme');
@@ -16,11 +27,14 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
   const [storesStatus, setStoresStatus] = useState(null);
 
   // LLM Settings state
-  const [llmConfig, setLlmConfig] = useState({
-    provider: 'ollama',
-    ollama: { endpoint: 'http://localhost:11434', model: 'llama3.2', temperature: 0.1 },
-    minimax: { apiKey: '', model: 'MiniMax-Text-01', baseUrl: 'https://api.minimax.chat/v1' }
-  });
+  const [llmConfig, setLlmConfig] = useState({ provider: 'ollama', configuredProviders: {} });
+  const [showAddProvider, setShowAddProvider] = useState(false);
+  const [showEditProvider, setShowEditProvider] = useState(false);
+  const [editingProvider, setEditingProvider] = useState(null);
+  const [editForm, setEditForm] = useState({ apiKey: '', endpoint: '', model: '' });
+  const [newProvider, setNewProvider] = useState({ type: '', label: '', apiKey: '', endpoint: '', model: '', hasKey: false, isLocal: false });
+  const [saving, setSaving] = useState(false);
+
   const [llmTesting, setLlmTesting] = useState(false);
   const [llmTestResult, setLlmTestResult] = useState(null);
 
@@ -36,7 +50,25 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
     if (activeTab === 'ai') {
       fetch('/recipe/api/settings/llm')
         .then(r => r.json())
-        .then(data => setLlmConfig(data))
+        .then(data => {
+          const configured = {};
+          const info = {
+            ollama:     { icon: '🖥️', label: 'Ollama (Lokal)', isLocal: true,  needsKey: false },
+            openrouter: { icon: '🌐', label: 'OpenRouter',     isLocal: false, needsKey: true  },
+            openai:     { icon: '🤖', label: 'OpenAI',          isLocal: false, needsKey: true  },
+            anthropic:  { icon: '🧠', label: 'Anthropic',       isLocal: false, needsKey: true  },
+            gemini:     { icon: '✨', label: 'Google Gemini',   isLocal: false, needsKey: true  },
+            minimax:    { icon: '🌏', label: 'MiniMax',         isLocal: false, needsKey: true  },
+            custom:     { icon: '⚙️', label: 'Custom Endpoint',isLocal: true,  needsKey: false },
+          };
+          for (const [key, inf] of Object.entries(info)) {
+            const cfg = data[key];
+            if (cfg && (cfg.apiKey || cfg.endpoint || cfg.model)) {
+              configured[key] = { ...cfg, label: inf.label, icon: inf.icon, isLocal: inf.isLocal, hasKey: inf.needsKey && !!cfg.apiKey };
+            }
+          }
+          setLlmConfig({ provider: data.provider || 'ollama', configuredProviders: configured });
+        })
         .catch(() => {});
     }
   }, [activeTab]);
@@ -158,19 +190,78 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
 
   // LLM handlers
   async function handleSaveLlm() {
+    setSaving(true);
     try {
+      const flat = { provider: llmConfig.provider };
+      for (const [key, p] of Object.entries(llmConfig.configuredProviders || {})) {
+        flat[key] = { apiKey: p.apiKey || '', endpoint: p.endpoint || '', model: p.model || '' };
+      }
       const res = await fetch('/recipe/api/settings/llm', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(llmConfig)
+        body: JSON.stringify(flat)
       });
       const data = await res.json();
       if (data.success) {
-        setLlmTestResult({ type: 'success', msg: '✓ Konfiguration gespeichert' });
+        setLlmTestResult({ type: 'success', msg: '✓ KI-Einstellungen gespeichert!' });
+      } else {
+        setLlmTestResult({ type: 'error', msg: '✗ ' + (data.error || 'Fehler beim Speichern') });
       }
     } catch (e) {
-      setLlmTestResult({ type: 'error', msg: 'Fehler: ' + e.message });
+      setLlmTestResult({ type: 'error', msg: '✗ ' + e.message });
     }
+    setSaving(false);
+    setTimeout(() => setLlmTestResult(null), 4000);
+  }
+
+  function doAddProvider() {
+    const t = newProvider.type;
+    const info = PROVIDER_TYPES.find(x => x.id === t) || {};
+    const p = {
+      label: newProvider.label || info.name || t,
+      icon: newProvider.icon || info.icon || '🤖',
+      apiKey: newProvider.apiKey || '',
+      endpoint: newProvider.endpoint || info.defaultEndpoint || '',
+      model: newProvider.model || info.defaultModel || '',
+      hasKey: info.needsKey || false,
+      isLocal: info.isLocal || false,
+    };
+    setLlmConfig(prev => ({
+      ...prev,
+      configuredProviders: { ...prev.configuredProviders, [t]: p },
+      provider: prev.provider || t,
+    }));
+    setShowAddProvider(false);
+    setNewProvider({ type: '', label: '', apiKey: '', endpoint: '', model: '', hasKey: false, isLocal: false });
+  }
+
+  function openProviderEditor(key) {
+    const p = llmConfig.configuredProviders[key];
+    setEditingProvider(p);
+    setEditForm({ apiKey: '', endpoint: p.endpoint || '', model: p.model || '' });
+    setShowEditProvider(true);
+  }
+
+  function doSaveProviderEdit() {
+    if (!editingProvider) return;
+    const key = Object.keys(llmConfig.configuredProviders).find(k => llmConfig.configuredProviders[k] === editingProvider);
+    if (!key) return;
+    setLlmConfig(prev => ({
+      ...prev,
+      configuredProviders: {
+        ...prev.configuredProviders,
+        [key]: { ...prev.configuredProviders[key], endpoint: editForm.endpoint, model: editForm.model, apiKey: editForm.apiKey || prev.configuredProviders[key].apiKey }
+      }
+    }));
+    setShowEditProvider(false);
+  }
+
+  function removeProvider(key) {
+    const name = llmConfig.configuredProviders[key]?.label || key;
+    if (!window.confirm(`Provider "${name}" wirklich entfernen?`)) return;
+    const updated = { ...llmConfig.configuredProviders };
+    delete updated[key];
+    setLlmConfig({ ...llmConfig, configuredProviders: updated, provider: llmConfig.provider === key ? (Object.keys(updated)[0] || 'ollama') : llmConfig.provider });
   }
 
   async function handleTestLlm(provider) {
@@ -283,231 +374,175 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
             </div>
           )}
           
+
           {activeTab === 'ai' && (
             <div className="ai-settings">
               <p className="settings-description">
-                Wähle, welches LLM du für Rezept-Extraktion und andere KI-Funktionen verwenden möchtest.
-                Alle Anbieter nutzen das OpenAI-kompatible Format.
+                Verwalte deine LLM-Provider für Rezept-Extraktion und andere KI-Funktionen.
+                Der primäre Anbieter wird zuerst verwendet — Fallbacks automatisch bei Ausfällen.
               </p>
 
-              {/* Provider Dropdown */}
-              <div className="llm-field">
-                <label>Anbieter:</label>
-                <select
-                  value={llmConfig.provider || 'ollama'}
-                  onChange={e => setLlmConfig({ ...llmConfig, provider: e.target.value })}
-                  className="llm-provider-select"
-                >
-                  <option value="ollama">🖥️ Ollama (Lokal)</option>
-                  <option value="openrouter">🌐 OpenRouter</option>
-                  <option value="openai">🤖 OpenAI</option>
-                  <option value="anthropic">🧠 Anthropic</option>
-                  <option value="gemini">✨ Google Gemini</option>
-                  <option value="minimax">🌏 MiniMax</option>
-                  <option value="custom">⚙️ Custom Endpoint</option>
-                </select>
+              {/* Provider Table */}
+              {Object.keys(llmConfig.configuredProviders || {}).length > 0 ? (
+                <div className="ai-provider-table-wrap">
+                  <table className="ai-provider-table">
+                    <thead>
+                      <tr>
+                        <th style={{width:'40px'}}>Primär</th>
+                        <th>Provider</th>
+                        <th>Modell</th>
+                        <th>Endpoint / Status</th>
+                        <th style={{width:'70px'}}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(llmConfig.configuredProviders || {}).map(([key, p]) => (
+                        <tr key={key} className={llmConfig.provider === key ? 'row-primary' : ''}>
+                          <td style={{textAlign:'center'}}>
+                            <input
+                              type="radio"
+                              name="primaryProvider"
+                              checked={llmConfig.provider === key}
+                              onChange={() => setLlmConfig({ ...llmConfig, provider: key })}
+                              title="Als primären Provider setzen"
+                            />
+                          </td>
+                          <td>
+                            <span className="provider-badge">{p.icon || '🤖'} {p.label || key}</span>
+                            {p.isLocal && <span className="provider-local-tag">lokal</span>}
+                          </td>
+                          <td>
+                            <span style={{fontFamily:'monospace', fontSize:'0.8rem'}}>{p.model || <span className="text-muted">—</span>}</span>
+                          </td>
+                          <td>
+                            {p.endpoint ? (
+                              <span className="provider-endpoint" title={p.endpoint}>{p.endpoint.length > 38 ? p.endpoint.substring(0,38)+'…' : p.endpoint}</span>
+                            ) : p.hasKey ? (
+                              <span className="provider-status-ok">✓ API Key</span>
+                            ) : (
+                              <span className="text-muted">nicht konfiguriert</span>
+                            )}
+                          </td>
+                          <td>
+                            <button className="btn-icon btn-edit" onClick={() => openProviderEditor(key)} title="Bearbeiten">✏️</button>
+                            <button className="btn-icon btn-delete" onClick={() => removeProvider(key)} title="Entfernen">🗑️</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="ai-empty-state">
+                  <span style={{fontSize:'2rem'}}>🤖</span>
+                  <p>Keine Provider konfiguriert. Füge unten einen Provider hinzu.</p>
+                </div>
+              )}
+
+              {/* Add Provider */}
+              <div className="ai-add-provider">
+                <button className="btn btn-secondary" onClick={() => { setEditingProvider(null); setNewProvider({ type: '', label: '', apiKey: '', endpoint: '', model: '', hasKey: false, isLocal: false }); setShowAddProvider(true); }}>
+                  ➕ Provider hinzufügen
+                </button>
               </div>
 
-              {/* Ollama Config */}
-              {llmConfig.provider === 'ollama' && (
-                <div className="llm-config-section">
-                  <h4>🖥️ Ollama (Lokal)</h4>
-                  <p className="llm-hint">Ollama muss auf deinem Rechner laufen. <a href="https://ollama.com" target="_blank" rel="noopener">Download →</a></p>
-                  <div className="llm-field">
-                    <label>Endpoint:</label>
-                    <input type="url" value={llmConfig.ollama?.endpoint || 'http://localhost:11434'} onChange={e => setLlmConfig({ ...llmConfig, ollama: { ...llmConfig.ollama, endpoint: e.target.value } })} placeholder="http://localhost:11434" />
+              {/* Add Provider Dialog */}
+              {showAddProvider && (
+                <div className="provider-editor-overlay" onClick={() => setShowAddProvider(false)}>
+                  <div className="provider-editor" onClick={e => e.stopPropagation()}>
+                    <div className="provider-editor-header">
+                      <h3>Provider hinzufügen</h3>
+                      <button className="modal-close" onClick={() => setShowAddProvider(false)}>×</button>
+                    </div>
+                    {!newProvider.type ? (
+                      <div className="provider-type-grid">
+                        {PROVIDER_TYPES.map(t => (
+                          <button key={t.id} className="provider-type-btn" onClick={() => setNewProvider({ ...newProvider, type: t.id, label: t.name, icon: t.icon, hasKey: t.needsKey, isLocal: t.isLocal, endpoint: t.defaultEndpoint || '', model: t.defaultModel || '' })}>
+                            <span className="pt-icon">{t.icon}</span>
+                            <span className="pt-name">{t.name}</span>
+                            <span className="pt-desc">{t.desc}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="provider-config-form">
+                        <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'1rem',padding:'0.5rem',background:'var(--color-sepia)',borderRadius:'var(--radius)'}}>
+                          <span style={{fontSize:'1.3rem'}}>{newProvider.icon}</span>
+                          <span style={{fontWeight:600}}>{newProvider.label || PROVIDER_TYPES.find(t=>t.id===newProvider.type)?.name}</span>
+                          <button style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',fontSize:'0.8rem',color:'var(--color-text-light)'}} onClick={() => setNewProvider({type:'', label:'', apiKey:'', endpoint:'', model:'', hasKey:false, isLocal:false})}>ändern</button>
+                        </div>
+                        {newProvider.isLocal && (
+                          <div className="config-field">
+                            <label>Endpoint URL:</label>
+                            <input type="url" value={newProvider.endpoint} onChange={e => setNewProvider({...newProvider, endpoint: e.target.value})} placeholder="http://localhost:11434" />
+                          </div>
+                        )}
+                        {newProvider.hasKey && (
+                          <div className="config-field">
+                            <label>API Key:</label>
+                            <input type="password" value={newProvider.apiKey} onChange={e => setNewProvider({...newProvider, apiKey: e.target.value})} placeholder={newProvider.type === 'openrouter' ? 'sk-or-v1-…' : newProvider.type === 'openai' ? 'sk-…' : 'API Key'} />
+                          </div>
+                        )}
+                        <div className="config-field">
+                          <label>Modell:</label>
+                          <input type="text" value={newProvider.model} onChange={e => setNewProvider({...newProvider, model: e.target.value})} placeholder={PROVIDER_TYPES.find(t=>t.id===newProvider.type)?.defaultModel || 'Modellname'} />
+                        </div>
+                        <div style={{display:'flex',gap:'0.5rem',marginTop:'1rem',justifyContent:'flex-end'}}>
+                          <button className="btn btn-secondary" onClick={() => setShowAddProvider(false)}>Abbrechen</button>
+                          <button className="btn btn-primary" onClick={doAddProvider} disabled={!newProvider.model || (!newProvider.isLocal && newProvider.hasKey && !newProvider.apiKey)}>➕ Hinzufügen</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="llm-field">
-                    <label>Modell:</label>
-                    <input type="text" value={llmConfig.ollama?.model || 'llama3.2'} onChange={e => setLlmConfig({ ...llmConfig, ollama: { ...llmConfig.ollama, model: e.target.value } })} placeholder="llama3.2" />
-                  </div>
-                  <button className="btn btn-secondary" onClick={() => handleTestLlm('ollama')} disabled={llmTesting}>{llmTesting ? '⏳ Teste...' : '🔗 Verbindung testen'}</button>
                 </div>
               )}
 
-              {/* OpenRouter Config */}
-              {llmConfig.provider === 'openrouter' && (
-                <div className="llm-config-section">
-                  <h4>🌐 OpenRouter</h4>
-                  <p className="llm-hint"><a href="https://openrouter.ai/keys" target="_blank" rel="noopener">API Key holen →</a> – Zugriff auf viele Modelle über eine API.</p>
-                  <div className="llm-field">
-                    <label>API Key:</label>
-                    <input type="password" value={llmConfig.openrouter?.apiKey || ''} onChange={e => setLlmConfig({ ...llmConfig, openrouter: { ...llmConfig.openrouter, apiKey: e.target.value } })} placeholder="sk-or-v1-..." />
+              {/* Edit Provider Dialog */}
+              {showEditProvider && editingProvider && (
+                <div className="provider-editor-overlay" onClick={() => setShowEditProvider(false)}>
+                  <div className="provider-editor" onClick={e => e.stopPropagation()}>
+                    <div className="provider-editor-header">
+                      <h3>✏️ Provider bearbeiten</h3>
+                      <button className="modal-close" onClick={() => setShowEditProvider(false)}>×</button>
+                    </div>
+                    <div className="provider-config-form">
+                      <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'1rem',padding:'0.5rem',background:'var(--color-sepia)',borderRadius:'var(--radius)'}}>
+                        <span style={{fontSize:'1.3rem'}}>{editingProvider.icon}</span>
+                        <span style={{fontWeight:600}}>{editingProvider.label}</span>
+                      </div>
+                      {editingProvider.isLocal && (
+                        <div className="config-field">
+                          <label>Endpoint URL:</label>
+                          <input type="url" value={editForm.endpoint} onChange={e => setEditForm({...editForm, endpoint: e.target.value})} />
+                        </div>
+                      )}
+                      {editingProvider.hasKey && (
+                        <div className="config-field">
+                          <label>API Key:</label>
+                          <input type="password" value={editForm.apiKey} onChange={e => setEditForm({...editForm, apiKey: e.target.value})} placeholder="Nicht ändern wenn leer" />
+                        </div>
+                      )}
+                      <div className="config-field">
+                        <label>Modell:</label>
+                        <input type="text" value={editForm.model} onChange={e => setEditForm({...editForm, model: e.target.value})} />
+                      </div>
+                      <div style={{display:'flex',gap:'0.5rem',marginTop:'1rem',justifyContent:'flex-end'}}>
+                        <button className="btn btn-secondary" onClick={() => setShowEditProvider(false)}>Abbrechen</button>
+                        <button className="btn btn-primary" onClick={doSaveProviderEdit} disabled={!editForm.model}>💾 Speichern</button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="llm-field">
-                    <label>Modell:</label>
-                    <input type="text" value={llmConfig.openrouter?.model || 'openai/gpt-4o-mini'} onChange={e => setLlmConfig({ ...llmConfig, openrouter: { ...llmConfig.openrouter, model: e.target.value } })} placeholder="openai/gpt-4o-mini" />
-                  </div>
-                  <button className="btn btn-secondary" onClick={() => handleTestLlm('openrouter')} disabled={llmTesting || !llmConfig.openrouter?.apiKey}>{llmTesting ? '⏳ Teste...' : '🔗 Verbindung testen'}</button>
                 </div>
               )}
 
-              {/* OpenAI Config */}
-              {llmConfig.provider === 'openai' && (
-                <div className="llm-config-section">
-                  <h4>🤖 OpenAI</h4>
-                  <p className="llm-hint"><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">API Key holen →</a></p>
-                  <div className="llm-field">
-                    <label>API Key:</label>
-                    <input type="password" value={llmConfig.openai?.apiKey || ''} onChange={e => setLlmConfig({ ...llmConfig, openai: { ...llmConfig.openai, apiKey: e.target.value } })} placeholder="sk-..." />
-                  </div>
-                  <div className="llm-field">
-                    <label>Modell:</label>
-                    <input type="text" value={llmConfig.openai?.model || 'gpt-4o-mini'} onChange={e => setLlmConfig({ ...llmConfig, openai: { ...llmConfig.openai, model: e.target.value } })} placeholder="gpt-4o-mini" />
-                  </div>
-                  <button className="btn btn-secondary" onClick={() => handleTestLlm('openai')} disabled={llmTesting || !llmConfig.openai?.apiKey}>{llmTesting ? '⏳ Teste...' : '🔗 Verbindung testen'}</button>
-                </div>
-              )}
-
-              {/* Anthropic Config */}
-              {llmConfig.provider === 'anthropic' && (
-                <div className="llm-config-section">
-                  <h4>🧠 Anthropic (Claude)</h4>
-                  <p className="llm-hint"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">API Key holen →</a></p>
-                  <div className="llm-field">
-                    <label>API Key:</label>
-                    <input type="password" value={llmConfig.anthropic?.apiKey || ''} onChange={e => setLlmConfig({ ...llmConfig, anthropic: { ...llmConfig.anthropic, apiKey: e.target.value } })} placeholder="sk-ant-..." />
-                  </div>
-                  <div className="llm-field">
-                    <label>Modell:</label>
-                    <input type="text" value={llmConfig.anthropic?.model || 'claude-sonnet-4-20250514'} onChange={e => setLlmConfig({ ...llmConfig, anthropic: { ...llmConfig.anthropic, model: e.target.value } })} placeholder="claude-sonnet-4-20250514" />
-                  </div>
-                  <button className="btn btn-secondary" onClick={() => handleTestLlm('anthropic')} disabled={llmTesting || !llmConfig.anthropic?.apiKey}>{llmTesting ? '⏳ Teste...' : '🔗 Verbindung testen'}</button>
-                </div>
-              )}
-
-              {/* Gemini Config */}
-              {llmConfig.provider === 'gemini' && (
-                <div className="llm-config-section">
-                  <h4>✨ Google Gemini</h4>
-                  <p className="llm-hint"><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">API Key holen →</a></p>
-                  <div className="llm-field">
-                    <label>API Key:</label>
-                    <input type="password" value={llmConfig.gemini?.apiKey || ''} onChange={e => setLlmConfig({ ...llmConfig, gemini: { ...llmConfig.gemini, apiKey: e.target.value } })} placeholder="AIza..." />
-                  </div>
-                  <div className="llm-field">
-                    <label>Modell:</label>
-                    <input type="text" value={llmConfig.gemini?.model || 'gemini-2.0-flash'} onChange={e => setLlmConfig({ ...llmConfig, gemini: { ...llmConfig.gemini, model: e.target.value } })} placeholder="gemini-2.0-flash" />
-                  </div>
-                  <button className="btn btn-secondary" onClick={() => handleTestLlm('gemini')} disabled={llmTesting || !llmConfig.gemini?.apiKey}>{llmTesting ? '⏳ Teste...' : '🔗 Verbindung testen'}</button>
-                </div>
-              )}
-
-              {/* MiniMax Config */}
-              {llmConfig.provider === 'minimax' && (
-                <div className="llm-config-section">
-                  <h4>🌏 MiniMax API</h4>
-                  <p className="llm-hint"><a href="https://platform.minimax.io" target="_blank" rel="noopener">API Key holen →</a></p>
-                  <div className="llm-field">
-                    <label>API Key:</label>
-                    <input type="password" value={llmConfig.minimax?.apiKey || ''} onChange={e => setLlmConfig({ ...llmConfig, minimax: { ...llmConfig.minimax, apiKey: e.target.value } })} placeholder="Dein MiniMax API Key" />
-                  </div>
-                  <div className="llm-field">
-                    <label>Modell:</label>
-                    <input type="text" value={llmConfig.minimax?.model || 'MiniMax-Text-01'} onChange={e => setLlmConfig({ ...llmConfig, minimax: { ...llmConfig.minimax, model: e.target.value } })} placeholder="MiniMax-Text-01" />
-                  </div>
-                  <button className="btn btn-secondary" onClick={() => handleTestLlm('minimax')} disabled={llmTesting || !llmConfig.minimax?.apiKey}>{llmTesting ? '⏳ Teste...' : '🔗 Verbindung testen'}</button>
-                </div>
-              )}
-
-              {/* Custom Config */}
-              {llmConfig.provider === 'custom' && (
-                <div className="llm-config-section">
-                  <h4>⚙️ Custom Endpoint</h4>
-                  <p className="llm-hint">Trage einen beliebigen OpenAI-kompatiblen Endpunkt ein (z.B. LocalAI, LM Studio, ollama remote).</p>
-                  <div className="llm-field">
-                    <label>Endpoint URL:</label>
-                    <input type="url" value={llmConfig.custom?.endpoint || ''} onChange={e => setLlmConfig({ ...llmConfig, custom: { ...llmConfig.custom, endpoint: e.target.value } })} placeholder="http://localhost:11434/v1/chat/completions" />
-                  </div>
-                  <div className="llm-field">
-                    <label>API Key (optional):</label>
-                    <input type="password" value={llmConfig.custom?.apiKey || ''} onChange={e => setLlmConfig({ ...llmConfig, custom: { ...llmConfig.custom, apiKey: e.target.value } })} placeholder="Leer für lokale Endpunkte" />
-                  </div>
-                  <div className="llm-field">
-                    <label>Modell:</label>
-                    <input type="text" value={llmConfig.custom?.model || ''} onChange={e => setLlmConfig({ ...llmConfig, custom: { ...llmConfig.custom, model: e.target.value } })} placeholder="Modellname" />
-                  </div>
-                  <button className="btn btn-secondary" onClick={() => handleTestLlm('custom')} disabled={llmTesting || !llmConfig.custom?.endpoint}>{llmTesting ? '⏳ Teste...' : '🔗 Verbindung testen'}</button>
-                </div>
-              )}
-              
-              {/* Ollama Config */}
-              {llmConfig.provider === 'ollama' && (
-                <div className="llm-config-section">
-                  <h4>🖥️ Ollama (Lokal)</h4>
-                  <p className="llm-hint">Ollama muss auf deinem Rechner laufen. <a href="https://ollama.com" target="_blank" rel="noopener">Download →</a></p>
-                  <div className="llm-field">
-                    <label>Endpoint:</label>
-                    <input
-                      type="url"
-                      value={llmConfig.ollama?.endpoint || 'http://localhost:11434'}
-                      onChange={e => setLlmConfig({...llmConfig, ollama: {...llmConfig.ollama, endpoint: e.target.value}})}
-                      placeholder="http://localhost:11434"
-                    />
-                  </div>
-                  <div className="llm-field">
-                    <label>Modell:</label>
-                    <input
-                      type="text"
-                      value={llmConfig.ollama?.model || 'llama3.2'}
-                      onChange={e => setLlmConfig({...llmConfig, ollama: {...llmConfig.ollama, model: e.target.value}})}
-                      placeholder="llama3.2"
-                    />
-                  </div>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => handleTestLlm('ollama')}
-                    disabled={llmTesting}
-                  >
-                    {llmTesting ? '⏳ Teste...' : '🔗 Verbindung testen'}
-                  </button>
-                </div>
-              )}
-              
-              {/* MiniMax Config */}
-              {llmConfig.provider === 'minimax' && (
-                <div className="llm-config-section">
-                  <h4>🌐 MiniMax API</h4>
-                  <p className="llm-hint">Du brauchst einen MiniMax API Key. <a href="https://platform.minimax.io" target="_blank" rel="noopener">API Key holen →</a></p>
-                  <div className="llm-field">
-                    <label>API Key:</label>
-                    <input
-                      type="password"
-                      value={llmConfig.minimax?.apiKey || ''}
-                      onChange={e => setLlmConfig({...llmConfig, minimax: {...llmConfig.minimax, apiKey: e.target.value}})}
-                      placeholder="Dein MiniMax API Key"
-                    />
-                  </div>
-                  <div className="llm-field">
-                    <label>Modell:</label>
-                    <input
-                      type="text"
-                      value={llmConfig.minimax?.model || 'MiniMax-Text-01'}
-                      onChange={e => setLlmConfig({...llmConfig, minimax: {...llmConfig.minimax, model: e.target.value}})}
-                      placeholder="MiniMax-Text-01"
-                    />
-                  </div>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => handleTestLlm('minimax')}
-                    disabled={llmTesting || !llmConfig.minimax?.apiKey}
-                  >
-                    {llmTesting ? '⏳ Teste...' : '🔗 Verbindung testen'}
-                  </button>
-                </div>
-              )}
-              
-              {/* Test Result */}
               {llmTestResult && (
-                <div className={`llm-test-result ${llmTestResult.type}`}>
-                  {llmTestResult.msg}
-                </div>
+                <div className={`llm-test-result ${llmTestResult.type}`}>{llmTestResult.msg}</div>
               )}
-              
+
               <div className="llm-actions">
                 <button className="btn btn-primary" onClick={handleSaveLlm}>💾 Konfiguration speichern</button>
               </div>
-              
+
               <div className="llm-info">
                 <h4>📋 Verwendungszweck</h4>
                 <ul>
@@ -518,7 +553,6 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
               </div>
             </div>
           )}
-
           {activeTab === 'eigenmarken' && (
             <div className="eigenmarken-settings">
               <p className="settings-description">Referenzpreise für Eigenmarken-Produkte.</p>

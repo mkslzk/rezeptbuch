@@ -4736,3 +4736,331 @@ a:hover {
   color: #e5e7eb !important;
   font-weight: 600;
 }
+
+/* ============================================================
+   AI Settings — Provider Table
+   ============================================================ */
+.ai-settings .settings-description {
+  font-size: 0.9rem;
+  color: var(--color-text-light);
+  margin-bottom: 1.25rem;
+  line-height: 1.5;
+}
+
+.ai-provider-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+}
+
+.ai-provider-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.ai-provider-table th {
+  background: var(--color-sepia);
+  color: var(--color-brown);
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  border-bottom: 2px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.ai-provider-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.ai-provider-table tr:last-child td {
+  border-bottom: none;
+}
+
+.ai-provider-table tr.row-primary td {
+  background: var(--color-sepia);
+}
+
+.ai-provider-table tr:hover td {
+  background: var(--color-cream);
+}
+
+.ai-provider-table input[type="radio"] {
+  accent-color: var(--color-accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.provider-badge {
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.provider-local-tag {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.4rem;
+  background: var(--color-green);
+  color: white;
+  border-radius: 10px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.provider-endpoint {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+}
+
+.provider-status-ok {
+  color: var(--color-green, #2e7d32);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.2rem 0.3rem;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.btn-icon:hover {
+  opacity: 1;
+}
+
+.btn-edit:hover {
+  background: var(--color-sepia);
+}
+
+.btn-delete:hover {
+  background: #ffebee;
+}
+
+.ai-add-provider {
+  margin-bottom: 1rem;
+}
+
+/* ============================================================
+   Provider Editor Dialog
+   ============================================================ */
+.provider-editor-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(92,61,46,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1rem;
+}
+
+.provider-editor {
+  background: var(--color-paper);
+  border: 3px solid var(--color-sepia-dark);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-paper);
+}
+
+.provider-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.provider-editor-header h3 {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  color: var(--color-brown);
+  margin: 0;
+}
+
+.provider-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.provider-type-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.75rem 0.5rem;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-paper);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.provider-type-btn:hover {
+  border-color: var(--color-accent);
+  background: var(--color-cream);
+}
+
+.provider-type-btn.active {
+  border-color: var(--color-accent);
+  background: var(--color-sepia);
+}
+
+.pt-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.pt-name {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
+.pt-desc {
+  font-size: 0.7rem;
+  color: var(--color-text-light);
+  line-height: 1.3;
+}
+
+.provider-config-form {
+  background: var(--color-cream);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.config-field {
+  margin-bottom: 0.75rem;
+}
+
+.config-field:last-child {
+  margin-bottom: 0;
+}
+
+.config-field label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.25rem;
+}
+
+.config-field input {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  background: var(--color-paper);
+  color: var(--color-text);
+  box-sizing: border-box;
+}
+
+.config-field input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.provider-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.llm-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-light);
+  margin-top: 0.5rem;
+}
+
+.llm-hint a {
+  color: var(--color-accent);
+}
+
+.text-muted {
+  color: var(--color-text-light);
+  font-style: italic;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.llm-test-result {
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.llm-test-result.success {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.llm-test-result.error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.llm-actions {
+  margin: 1.25rem 0;
+}
+
+.llm-info {
+  background: var(--color-cream);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  margin-top: 1rem;
+}
+
+.llm-info h4 {
+  font-family: var(--font-accent);
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-brown);
+}
+
+.llm-info ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.llm-info li {
+  font-size: 0.82rem;
+  color: var(--color-text-light);
+  padding: 0.2rem 0;
+}
+
+@media (max-width: 500px) {
+  .provider-type-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .ai-provider-table {
+    font-size: 0.78rem;
+  }
+  .ai-provider-table th,
+  .ai-provider-table td {
+    padding: 0.45rem 0.5rem;
+  }
+}
