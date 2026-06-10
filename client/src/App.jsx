@@ -76,13 +76,13 @@ function App() {
           <main className="main-content">
             <ImportStatusBanner />
             <Routes>
-              <Route path="/" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <HomePage />} />
-              <Route path="/recipe/new" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <RecipeFormPage />} />
-              <Route path="/recipe/:id" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <RecipeDetailPage />} />
-              <Route path="/recipe/:id/edit" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <RecipeFormPage />} />
-              <Route path="/meal-plan" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <MealPlanPage />} />
-              <Route path="/shopping-list" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <ShoppingListPage />} />
-              <Route path="/admin" element={!onboardingDone ? <OnboardingPage onComplete={handleOnboardingComplete} /> : <AdminPanel />} />
+              <Route path="/" element={<HomePage />} />
+              <Route path="/recipe/new" element={<RecipeFormPage />} />
+              <Route path="/recipe/:id" element={<RecipeDetailPage />} />
+              <Route path="/recipe/:id/edit" element={<RecipeFormPage />} />
+              <Route path="/meal-plan" element={<MealPlanPage />} />
+              <Route path="/shopping-list" element={<ShoppingListPage />} />
+              <Route path="/admin" element={<AdminPanel />} />
               <Route path="/batch" element={<BatchImportPage />} />
               <Route path="/shared/:id" element={<SharedRecipePage />} />
               <Route path="/kitchen/:id" element={<KitchenModePage />} />
