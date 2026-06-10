@@ -10,7 +10,7 @@
  * @param {string} platform - 'tiktok' | 'instagram'
  * @returns {Promise<Object>} { title, ingredients, steps, servings, prepTime, cookTime }
  */
-async function extractRecipeFromTranscript(input, platform = 'tiktok') {
+async function extractRecipeFromTranscript(input, platform = 'tiktok', fallbackProviders = []) {
   const data = typeof input === 'string'
     ? { description: '', transcript: input }
     : input || {};
@@ -53,7 +53,7 @@ async function extractRecipeFromTranscript(input, platform = 'tiktok') {
 
 const { chatJSON } = require('./llmClient.cjs');
 
-async function extractWithOllama(data, platform) {
+async function extractWithOllama(data, platform, fallbackProviders = []) {
   // Prefer description (real recipe text) over transcript (often hallucinated by Whisper)
   const description = (data.description || '').trim();
   const transcript = (data.transcript || '').trim();
@@ -110,7 +110,7 @@ ${source}
 
   const recipe = await chatJSON([
     { role: 'user', content: prompt }
-  ], { maxTokens: 1000 });
+  ], { maxTokens: 1000, fallbackProviders });
 
   return {
     title: recipe.title || '',

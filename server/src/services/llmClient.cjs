@@ -102,15 +102,15 @@ const PROVIDERS = {
  */
 async function chat(messages, opts = {}) {
   const config = getConfig();
-  const provider = config[config.provider] || {};
-  const providerKey = config.provider;
+  const providerKey = opts._providerOverride || config.provider;
+  const provider = config[providerKey] || {};
 
   let endpoint = PROVIDERS[providerKey]?.endpoint || provider.endpoint || '';
   // Ollama requires /api/chat path
   if (providerKey === 'ollama' && endpoint && !endpoint.includes('/api/chat')) {
     endpoint = endpoint.replace(/\/$/, '') + '/api/chat';
   }
-  let model = opts.model || provider.model || PROVIDERS[providerKey]?.defaultModel || '';
+  let model = opts._modelOverride || opts.model || provider.model || PROVIDERS[providerKey]?.defaultModel || '';
   const temperature = opts.temperature ?? provider.temperature ?? 0.1;
   const maxTokens = opts.maxTokens || 800;
 

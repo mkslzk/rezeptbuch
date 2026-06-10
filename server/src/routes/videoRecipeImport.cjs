@@ -6,6 +6,7 @@ const path = require('path');
 const { extractVideoUrl } = require('../services/videoRecipeExtractor.cjs');
 const { transcribeVideo } = require('../services/videoTranscriber.cjs');
 const { extractRecipeFromTranscript } = require('../services/recipeFromVideo.cjs');
+const { getConfig, PROVIDERS } = require('../services/llmClient.cjs');
 
 // Separate SQLite connection (WAL mode allows this safely).
 // Used to auto-save imported recipes so the user lands on the detail page
@@ -227,7 +228,14 @@ async function runVideoJob(jobId) {
     const transcriptClean = (transcript || '').trim();
     setJobMessage(jobId, 'transcribe', `Audio: ${transcriptClean.length} Zeichen · Caption: ${(dl.description || '').length}`, 70);
 
-    // Step 3: LLM extracts the recipe from caption (preferred) + transcript (fallback)
+    // Step 3: Build fallback provider list from settings (all configured providers except primary)
+    const cfg = getConfig();
+    const primaryProvider = cfg.provider;
+    const fallbackProviders = Object.keys(PROVIDERS)
+      .filter(k => k !== primaryProvider && k !== 'ollama' && k !== 'custom')
+      .filter(k => cfg[k]?.apiKey || cfg[k]?.endpoint)
+      .map(k => ({ provider: k, model: cfg[k]?.model || PROVIDERS[k]?.defaultModel || '' }));
+
     setJobMessage(jobId, 'recipe', 'Rezept wird extrahiert (LLM)…', 80);
     let recipe;
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -237,7 +245,7 @@ async function runVideoJob(jobId) {
           transcript: transcriptClean,
           title: dl.title || '',
           uploader: dl.uploader || ''
-        }, dl.platform);
+        }, dl.platform, fallbackProviders);
         break;
       } catch (e) {
         console.warn(`LLM attempt ${attempt} failed:`, e.message);
