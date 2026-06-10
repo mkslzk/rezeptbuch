@@ -96,7 +96,7 @@ router.post('/llm/test', async (req, res) => {
 
   let endpoint = pCfg.endpoint || PROVIDERS[targetProvider].defaultEndpoint;
   // Ollama requires /api/chat path
-  if (provider === 'ollama' && endpoint && !endpoint.endsWith('/api/chat')) {
+  if (targetProvider === 'ollama' && endpoint && !endpoint.endsWith('/api/chat')) {
     endpoint = endpoint.replace(/\/$/, '') + '/api/chat';
   }
   const model = pCfg.model || PROVIDERS[targetProvider].defaultModel;
