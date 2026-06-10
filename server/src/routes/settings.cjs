@@ -140,7 +140,13 @@ async function testLLMProvider(provider, endpoint, apiKey, model) {
   }
 
   const resp = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
-  const text = await resp.text();
+  let text = await resp.text();
+
+  // Ollama may return streaming NDJSON (application/x-ndjson) — split by lines and take last JSON object
+  if (resp.headers.get('content-type')?.includes('x-ndjson') || text.includes('\n')) {
+    const lines = text.trim().split('\n').filter(l => l.trim());
+    if (lines.length > 0) text = lines[lines.length - 1];
+  }
 
   if (!resp.ok) {
     try { const e = JSON.parse(text); throw new Error(e.error?.message || e.message || text.slice(0, 100)); }
