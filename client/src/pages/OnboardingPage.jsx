@@ -157,7 +157,7 @@ export default function OnboardingPage({ onComplete }) {
               <h1>Willkommen bei MOCA</h1>
               <p>Dein persönliches Rezeptbuch – erstelle dein Setup.</p>
             </div>
-            <div className="theme-grid">
+            <div className="theme-swatches">
               {THEMES.map(t => (
                 <button
                   key={t.id}

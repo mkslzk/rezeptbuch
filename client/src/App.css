@@ -4676,3 +4676,9 @@ a:hover {
     font-size: 0.95rem;
   }
 }
+
+/* Mobile: hide swatch names in onboarding, just show color dots */
+@media (max-width: 500px) {
+  .swatch-name { display: none; }
+  .theme-swatch { width: 36px; height: 36px; }
+}
