@@ -229,15 +229,35 @@ async function runVideoJob(jobId) {
 
     // Step 3: LLM extracts the recipe from caption (preferred) + transcript (fallback)
     setJobMessage(jobId, 'recipe', 'Rezept wird extrahiert (LLM)…', 80);
-    const recipe = await extractRecipeFromTranscript({
-      description: dl.description || '',
-      transcript: transcriptClean,
-      title: dl.title || '',
-      uploader: dl.uploader || ''
-    }, dl.platform);
+    let recipe;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        recipe = await extractRecipeFromTranscript({
+          description: dl.description || '',
+          transcript: transcriptClean,
+          title: dl.title || '',
+          uploader: dl.uploader || ''
+        }, dl.platform);
+        break;
+      } catch (e) {
+        console.warn(`LLM attempt ${attempt} failed:`, e.message);
+        if (attempt === 3) throw e;
+        await new Promise(r => setTimeout(r, 2000 * attempt));
+      }
+    }
 
+    // Fallback title if LLM returned empty
+    const fallbackTitle = dl.title || `Rezept von ${dl.uploader || dl.platform || 'TikTok'}`;
     const result = {
-      ...recipe,
+      title: (recipe?.title && recipe.title.length > 3) ? recipe.title : fallbackTitle,
+      description: recipe?.description || dl.description?.substring(0, 300) || '',
+      ingredients: recipe?.ingredients || [],
+      steps: recipe?.steps || [],
+      category: recipe?.category || '',
+      image_url: recipe?.image_url || dl.thumbnail || '',
+      servings: recipe?.servings ?? null,
+      prep_time: recipe?.prepTime ?? null,
+      cook_time: recipe?.cookTime ?? null,
       source_url: j.url,
       video_transcript: transcriptClean.substring(0, 500),
       video_caption: (dl.description || '').substring(0, 500),
