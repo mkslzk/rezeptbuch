@@ -174,9 +174,22 @@ async function chat(messages, opts = {}) {
  */
 async function chatJSON(messages, opts = {}) {
   const text = await chat(messages, opts);
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON found in LLM response');
-  return JSON.parse(match[0]);
+  console.log('[chatJSON] raw LLM response:', text.substring(0, 500));
+  // Find the first { and match to its balanced }
+  const firstBrace = text.indexOf('{');
+  if (firstBrace < 0) throw new Error('No JSON found in LLM response');
+  let depth = 0;
+  let end = firstBrace;
+  for (let i = firstBrace; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+  }
+  const jsonStr = text.substring(firstBrace, end);
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    throw new Error('JSON parse error: ' + e.message + ' | snippet: ' + jsonStr.substring(0, 100));
+  }
 }
 
 module.exports = { chat, chatJSON, getConfig, PROVIDERS };
