@@ -14,6 +14,7 @@ async function extractRecipeFromTranscript(input, platform = 'tiktok', fallbackP
   const data = typeof input === 'string'
     ? { description: '', transcript: input }
     : input || {};
+  const frameText = data.frameText || '';
 
   if (!data.description?.trim() && !data.transcript?.trim()) {
     throw new Error('Weder Caption noch Transkript vorhanden — nichts zum Extrahieren');

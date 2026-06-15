@@ -105,7 +105,7 @@ async function chat(messages, opts = {}) {
   const providerKey = opts._providerOverride || config.provider;
   const provider = config[providerKey] || {};
 
-  let endpoint = PROVIDERS[providerKey]?.endpoint || provider.endpoint || '';
+  let endpoint = provider.endpoint || PROVIDERS[providerKey]?.endpoint || '';
   // Ollama requires /api/chat path
   if (providerKey === 'ollama' && endpoint && !endpoint.includes('/api/chat')) {
     endpoint = endpoint.replace(/\/$/, '') + '/api/chat';

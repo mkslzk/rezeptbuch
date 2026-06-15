@@ -1,5 +1,5 @@
 # Rezeptbuch Dockerfile
-FROM node:22-alpine AS builder
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
@@ -11,13 +11,16 @@ WORKDIR /app/client
 RUN npm install && npm run build
 
 # === Production image ===
-FROM node:22-alpine
+FROM node:22-slim
 
 WORKDIR /app
 
-# Install Python and yt-dlp for video extraction
-RUN apk add --no-cache python3 py3-pip ffmpeg && \
-    pip3 install --break-system-packages yt-dlp
+# Install Python, yt-dlp, faster-whisper, and tesseract OCR for video text extraction
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-pip ffmpeg tesseract-ocr tesseract-ocr-deu \
+    && pip3 install --break-system-packages yt-dlp faster-whisper pytesseract \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy built frontend from builder
 COPY --from=builder /app/client/dist /app/client/dist

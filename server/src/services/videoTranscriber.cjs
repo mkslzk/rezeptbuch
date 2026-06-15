@@ -1,4 +1,4 @@
-const { existsSync, unlinkSync } = require('fs');
+const { existsSync, unlinkSync, mkdirSync, writeFileSync } = require('fs');
 const { tmpdir } = require('os');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -98,6 +98,88 @@ print(' '.join(seg.text for seg in segments), flush=True)
 }
 
 /**
+ * Extract text from a video by extracting frames and running OCR (tesseract).
+ * Samples frames every 3 seconds across the video duration.
+ * Useful for capturing recipe ingredients/steps shown as text overlays in videos.
+ *
+ * @param {string} videoPath - Local path to video file
+ * @returns {Promise<string>} Extracted text from frames
+ */
+function extractTextFromFrames(videoPath) {
+  return new Promise((resolve, reject) => {
+    if (!existsSync(videoPath)) return reject(new Error('Video-Datei nicht gefunden: ' + videoPath));
+
+    const framesDir = path.join(tmpdir(), `frames_${Date.now()}`);
+    mkdirSync(framesDir, { recursive: true });
+
+    // Step 1: Get video duration
+    const probe = spawn('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'csv=p=0',
+      videoPath
+    ]);
+
+    let duration = 0;
+    probe.stdout.on('data', d => { duration = parseFloat(d.toString().trim()) || 0; });
+    probe.on('close', code => {
+      if (code !== 0 || duration <= 0) {
+        try { require('fs').rmSync(framesDir, { recursive: true }); } catch {}
+        return resolve(''); // Can't get duration — skip OCR
+      }
+
+      // Step 2: Extract frames every 3 seconds
+      const numFrames = Math.max(1, Math.floor(duration / 3));
+      const extract = spawn('ffmpeg', [
+        '-y', '-i', videoPath,
+        '-vf', `fps=${numFrames / Math.max(duration, 1)}`,
+        '-q:v', '3',
+        path.join(framesDir, 'frame_%04d.jpg')
+      ]);
+
+      extract.on('close', code => {
+        const { readdirSync, readFileSync } = require('fs');
+        const files = readdirSync(framesDir).filter(f => f.endsWith('.jpg'));
+        if (files.length === 0) {
+          try { require('fs').rmSync(framesDir, { recursive: true }); } catch {}
+          return resolve('');
+        }
+
+        // Step 3: Run tesseract on each frame
+        let ocrTexts = [];
+        let done = 0;
+        files.forEach((file, i) => {
+          const tesseract = spawn('tesseract', [
+            path.join(framesDir, file),
+            'stdout',
+            '-l', 'deu+eng',
+            '--psm', '6'
+          ]);
+          let output = '';
+          tesseract.stdout.on('data', d => { output += d.toString(); });
+          tesseract.on('close', () => {
+            if (output.trim()) ocrTexts.push(output.trim());
+            try { unlinkSync(path.join(framesDir, file)); } catch {}
+            done++;
+            if (done === files.length) {
+              try { require('fs').rmSync(framesDir, { recursive: true }); } catch {}
+              resolve(ocrTexts.join('\n'));
+            }
+          });
+          tesseract.on('error', () => {
+            done++;
+            if (done === files.length) {
+              try { require('fs').rmSync(framesDir, { recursive: true }); } catch {}
+              resolve(ocrTexts.join('\n'));
+            }
+          });
+        });
+      });
+    });
+  });
+}
+
+/**
  * @deprecated Use extractVideoUrl (yt-dlp) + transcribeVideo directly.
  * Kept for backward compat — downloads with curl, which 403s on TikTok.
  */
@@ -115,4 +197,4 @@ async function transcribeVideoUrl(videoUrl, model = 'base') {
   }
 }
 
-module.exports = { transcribeVideo, transcribeVideoUrl };
+module.exports = { transcribeVideo, transcribeVideoUrl, extractTextFromFrames };

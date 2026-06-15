@@ -4,7 +4,7 @@ const { unlinkSync } = require('fs');
 const Database = require('better-sqlite3');
 const path = require('path');
 const { extractVideoUrl } = require('../services/videoRecipeExtractor.cjs');
-const { transcribeVideo } = require('../services/videoTranscriber.cjs');
+const { transcribeVideo, extractTextFromFrames } = require('../services/videoTranscriber.cjs');
 const { extractRecipeFromTranscript } = require('../services/recipeFromVideo.cjs');
 const { getConfig, PROVIDERS } = require('../services/llmClient.cjs');
 
@@ -234,7 +234,17 @@ async function runVideoJob(jobId) {
       console.warn('Whisper fehlgeschlagen, fahre mit Caption fort:', e.message);
     }
     const transcriptClean = (transcript || '').trim();
-    setJobMessage(jobId, 'transcribe', `Audio: ${transcriptClean.length} Zeichen · Caption: ${(dl.description || '').length}`, 70);
+
+    // Step 2b: Extract text from video frames (ingredients/steps shown as overlays)
+    let frameText = '';
+    try {
+      frameText = await extractTextFromFrames(videoPath);
+      console.log(`[videoRecipeImport] OCR frame text: ${frameText.length} chars`);
+    } catch (e) {
+      console.warn('OCR fehlgeschlagen:', e.message);
+    }
+
+    setJobMessage(jobId, 'transcribe', `Audio: ${transcriptClean.length} Zeichen · Caption: ${(dl.description || '').length} · OCR: ${frameText.length}`, 70);
 
     // Step 3: Build fallback provider list from settings (all configured providers except primary)
     const cfg = getConfig();
@@ -252,7 +262,8 @@ async function runVideoJob(jobId) {
           description: dl.description || '',
           transcript: transcriptClean,
           title: dl.title || '',
-          uploader: dl.uploader || ''
+          uploader: dl.uploader || '',
+          frameText: frameText || ''
         }, dl.platform, fallbackProviders);
         break;
       } catch (e) {
