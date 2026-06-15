@@ -27,10 +27,11 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Environment detection (PROD=production, else development)
-const ENVIRONMENT = process.env.ENVIRONMENT || 'development';
-app.get('/recipe/api/environment', (req, res) => {
-  res.json({ environment: ENVIRONMENT });
-});
+const ENVIRONMENT = process.env.ENVIRONMENT
+  || (process.env.NODE_ENV === 'production' ? 'production' : 'development');
+const envHandler = (req, res) => res.json({ environment: ENVIRONMENT });
+app.get('/recipe/api/environment', envHandler);
+app.get('/api/environment', envHandler);
 
 
 initDb();
