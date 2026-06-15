@@ -60,10 +60,15 @@ function normalizeIngredients(arr) {
 function saveImportedRecipe(recipe) {
   if (!recipe || !recipe.title) return null;
   try {
+    // Schema must include import_method, video_transcript, video_caption
+    // (columns were added in the db migration). Truncate transcript/caption
+    // to 2000 chars to keep the DB row size sane — full text is still
+    // available in the job result for the UI to show.
     const stmt = saveDb.prepare(`
       INSERT INTO recipes (title, description, ingredients, steps, category, tags,
-                           image_url, servings, prep_time, cook_time, source_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           image_url, servings, prep_time, cook_time, source_url,
+                           import_method, video_transcript, video_caption)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
       recipe.title,
@@ -76,7 +81,10 @@ function saveImportedRecipe(recipe) {
       recipe.servings || null,
       recipe.prepTime || recipe.prep_time || null,
       recipe.cookTime || recipe.cook_time || null,
-      recipe.source_url || null
+      recipe.source_url || null,
+      recipe.import_method || null,
+      (recipe.video_transcript || '').substring(0, 2000),
+      (recipe.video_caption || '').substring(0, 2000)
     );
     return result.lastInsertRowid;
   } catch (e) {

@@ -50,7 +50,11 @@ import sys
 import faster_whisper
 # faster-whisper >=1.0: WhisperModel is a class, not a function
 model = faster_whisper.WhisperModel("${model}", device="cpu", compute_type="int8")
-segments, info = model.transcribe("${wavPath}", language="de", task="transcribe")
+# Auto-detect the spoken language instead of forcing German — works for
+# Turkish / English / Arabic / etc. as well. The detected language is
+# emitted on stdout as a marker line that Node strips and logs.
+segments, info = model.transcribe("${wavPath}", task="transcribe")
+print(f"__CHARLIE_LANG__:{info.language}:{info.language_probability:.3f}", flush=True)
 print(' '.join(seg.text for seg in segments), flush=True)
 `
       ]);
@@ -70,7 +74,21 @@ print(' '.join(seg.text for seg in segments), flush=True)
       whisper.on('close', wcode => {
         try { unlinkSync(wavPath); } catch {}
         if (crashed) return;
-        if (wcode === 0) return resolve(transcript.trim());
+        if (wcode === 0) {
+          // Strip the language-detection marker line emitted by the Python
+          // helper. It always lives on its own line at the very start of
+          // stdout, so we can find/remove it cheaply.
+          const lines = transcript.split(/\r?\n/);
+          const langLineIdx = lines.findIndex(l => l.startsWith('__CHARLIE_LANG__:'));
+          if (langLineIdx >= 0) {
+            const parts = lines[langLineIdx].split(':');
+            const lang = parts[1] || 'unknown';
+            const prob = parts[2] || '0';
+            console.log(`[videoTranscriber] Whisper auto-detected language: ${lang} (confidence ${prob})`);
+            lines.splice(langLineIdx, 1);
+          }
+          return resolve(lines.join('\n').trim());
+        }
         // Surface the most informative whisper error
         const lastErr = whisperErr.trim().split('\n').filter(l => l.trim()).pop() || '';
         reject(new Error('Whisper fehlgeschlagen: ' + (lastErr || `exit ${wcode}`)));

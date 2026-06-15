@@ -11,6 +11,7 @@ import OnboardingPage from './pages/OnboardingPage.jsx';
 import SharedRecipePage from './pages/SharedRecipePage.jsx';
 import KitchenModePage from './pages/KitchenModePage.jsx';
 import ImportStatusBanner from './components/ImportStatusBanner.jsx';
+import EnvironmentBanner from './components/EnvironmentBanner.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import './App.css';
@@ -55,6 +56,7 @@ function App() {
     <ThemeProvider>
       <BrowserRouter basename="/recipe">
         <div className="app">
+          <EnvironmentBanner />
           <header className="header">
             <div className="header-inner">
               <a href="/recipe" className="logo">🍳 <span className="logo-text">MOCA</span></a>

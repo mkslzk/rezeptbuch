@@ -9,6 +9,7 @@ services:
       - ./data:/app/server/src/data
     environment:
       - NODE_ENV=production
+      - ENVIRONMENT=production
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/recipe/api/health"]

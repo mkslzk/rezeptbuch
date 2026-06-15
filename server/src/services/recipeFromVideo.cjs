@@ -27,6 +27,16 @@ async function extractRecipeFromTranscript(input, platform = 'tiktok', fallbackP
     console.log('Ollama failed:', e.message);
   }
 
+  // Surface what the LLM returned (or didn't) so we can see why the
+  // German-caption parser / keyword fallback is being used.
+  console.log('[recipeFromVideo] llmResult ingredients:', llmResult?.ingredients?.length, 'steps:', llmResult?.steps?.length);
+  if (llmResult && (llmResult.ingredients?.length || 0) < 2) {
+    console.log('[recipeFromVideo] LLM result has <2 ingredients — falling through to caption parser');
+  }
+  if (llmResult && (llmResult.ingredients?.length || 0) >= 2 && (llmResult.steps?.length || 0) < 1) {
+    console.log('[recipeFromVideo] LLM result has ingredients but no steps — falling through to caption parser');
+  }
+
   // If LLM produced real structured output, use it
   if (llmResult && llmResult.ingredients.length >= 2 && llmResult.steps.length >= 1) {
     return llmResult;
@@ -72,11 +82,21 @@ async function extractWithOllama(data, platform, fallbackProviders = []) {
     source = `CAPTION (kurz):\n${description.substring(0, 1000)}`;
   }
 
-  const prompt = `Du bist ein deutsches Rezept-Extraktions-System. Extrahiere und übersetze aus dem folgenden Text eines ${platform === 'tiktok' ? 'TikTok' : 'Instagram'}-Rezeptvideos die Zutaten und Schritte ins Deutsche.
+  // Multilingual prompt: the caption may be in any language (German, Turkish,
+  // English, Arabic, etc.) and is frequently a mix of several. The LLM must
+  // detect the language(s), extract the recipe in whatever language it
+  // appears, and still emit the final JSON in German.
+  const prompt = `You are a multilingual recipe extraction system. The input is the text of a ${platform === 'tiktok' ? 'TikTok' : 'Instagram'} cooking video. The creator may write the caption in any language (German, Turkish, English, Arabic, Russian, …) and frequently mixes multiple languages in one caption (for example a Turkish ingredient list + German instructions + English hashtags).
 
-Gib NUR gültiges JSON zurück (keine Erklärung, kein Markdown):
+Your task:
+1. Detect the language(s) present in the input.
+2. Extract the recipe — ingredients and steps — from whatever language they appear in. Do NOT skip a section just because it is in a different language.
+3. Translate everything into German for the final output (JSON values must be in German).
+4. Be robust against mixed-language / misspelled captions: still extract a complete recipe.
+
+Output ONLY valid JSON (no explanation, no markdown, no code fences):
 {
-  "title": "Rezeptname (auf Deutsch)",
+  "title": "Recipe name (in German)",
   "ingredients": ["250g Mehl", "4 Eier"],
   "steps": ["Schritt 1", "Schritt 2"],
   "servings": 4,
@@ -84,33 +104,49 @@ Gib NUR gültiges JSON zurück (keine Erklärung, kein Markdown):
   "cookTime": 30
 }
 
-Regeln:
-- Übersetze ALLE Zutaten und Schritte ins Deutsche
-- Konvertiere amerikanische Maßeinheiten in metrische:
-  * 1 cup Mehl → 140g Mehl (bei pulverförmigen Zutaten wie Mehl, Zucker, Pulver)
-  * 1 cup Butter → 225g
-  * 1 cup Zucker → 200g
-  * 1 cup Milch/Wasser → 240ml
-  * 1 cup Honig/Zucker(flüssig) → 320g
-  * 1 tbsp (Esslöffel) → 15ml
-  * 1 tsp (Teelöffel) → 5ml
-  * 1 oz (Unzen, Gewicht) → 28g
+Rules:
+- Translate ALL ingredients and step descriptions into German (preserve the original numbers / quantities as digits).
+- Convert US / imperial units to metric:
+  * 1 cup flour / Mehl / un → 140g
+  * 1 cup butter / Butter → 225g
+  * 1 cup sugar / Zucker → 200g
+  * 1 cup milk / Milch / water / Wasser → 240ml
+  * 1 cup liquid honey / flüssiger Honig / syrup → 320g
+  * 1 stick butter (US) → 113g
+  * 1 tbsp (Esslöffel / yemek kaşığı) → 15ml
+  * 1 tsp (Teelöffel / çay kaşığı) → 5ml
+  * 1 oz (weight) → 28g
   * 1 lb (Pfund) → 450g
-  * Fahrenheit in Celsius: (°F - 32) × 5/9
-  * 1 cup allgemein flüssig → 240ml
-- ingredients: jede Zutat mit Menge, metrischer Einheit und übersetztem Namen als ein String
-- steps: kurze, durchnummerierbare Schritte auf Deutsch
-- servings/prepTime/cookTime: null wenn unbekannt
-- Wenn der Text kein Rezept enthält, gib leere Arrays zurück
-- Halluziniere NICHTS — nur was im Text steht
+  * Fahrenheit → Celsius: (°F − 32) × 5/9
+  * 1 cup general liquid → 240ml
+- ingredients: each ingredient as a single string with quantity, metric unit, and German name.
+- steps: short, numbered, in German.
+- servings / prepTime / cookTime: null if unknown.
+- If the text contains no recipe, return empty arrays.
+- Do NOT invent ingredients or steps that are not in the source.
 
-Quelltext:
+Source text:
 ${source}
 `;
 
   const recipe = await chatJSON([
     { role: 'user', content: prompt }
   ], { maxTokens: 1000, fallbackProviders });
+
+  // Logging: surface what the LLM produced so we can debug extraction failures.
+  // The prompt can be 4–6 KB; truncate to 600 chars for readability.
+  try {
+    const safe = (v) => (typeof v === 'string' ? v : JSON.stringify(v));
+    console.log('[recipeFromVideo] LLM output:', safe(recipe).substring(0, 300));
+    console.log('[recipeFromVideo] transcript length:', transcript.length, 'description length:', description.length);
+    console.log('[recipeFromVideo] LLM parsed: title=%s, ingredients=%d, steps=%d, servings=%s, prep=%s, cook=%s',
+      JSON.stringify(recipe.title || '').substring(0, 120),
+      Array.isArray(recipe.ingredients) ? recipe.ingredients.length : 0,
+      Array.isArray(recipe.steps) ? recipe.steps.length : 0,
+      recipe.servings, recipe.prepTime, recipe.cookTime);
+  } catch (logErr) {
+    console.log('[recipeFromVideo] logging failed:', logErr.message);
+  }
 
   return {
     title: recipe.title || '',
@@ -164,21 +200,75 @@ module.exports = { extractRecipeFromTranscript };
 function parseGermanRecipeCaption(caption) {
   if (!caption || caption.length < 50) return null;
 
-  // Split caption at section headers (case-insensitive, anywhere in text)
-  const ZUTATEN_RE = /\bZutaten\b\s*[-:]?\s*/i;
-  const ZUBEREITUNG_RE = /\bZubereitung\b\s*:?\s*/i;
-  const zMatch = caption.match(ZUTATEN_RE);
-  const bMatch = caption.match(ZUBEREITUNG_RE);
+  // Multilingual section headers. The first occurrence of an ingredients
+  // header and the first subsequent occurrence of an instructions header
+  // are used. The list intentionally covers common spellings / typos that
+  // appear in real TikTok / Instagram captions (e.g. "Malzemeler", the
+  // Turkish plural, which is often written as "Malzemeler" or "Malzemeleri").
+  const INGREDIENT_HEADERS = [
+    // German
+    'Zutaten', 'Zutat',
+    // Turkish
+    'Malzemeler', 'Malzeme', 'Malzemeleri', 'Malzemesi',
+    // English
+    'Ingredients', 'Ingredient',
+    // French
+    'Ingrédients', 'Ingredient',
+    // Italian
+    'Ingredienti',
+    // Spanish / Portuguese
+    'Ingredientes',
+    // Russian / Polish
+    'Ингредиенты', 'Składniki',
+    // Arabic
+    'المكونات'
+  ];
+  const INSTRUCTION_HEADERS = [
+    // German
+    'Zubereitung', 'Zubereit', 'Anleitung', 'Anweisungen', 'Zubereitungsanleitung',
+    // Turkish
+    'Hazırlanışı', 'Hazırlanış', 'Hazırlama', 'Yapılışı', 'Yapılış', 'Tarif', 'Hazırlanış Şekli',
+    // English
+    'Instructions', 'Instruction', 'Method', 'Directions', 'Preparation', 'Steps', 'Procedure',
+    // French
+    'Préparation', 'Réalisation', 'Instructions',
+    // Italian
+    'Preparazione', 'Istruzioni', 'Procedimento',
+    // Spanish
+    'Preparación', 'Elaboración', 'Instrucciones',
+    // Portuguese
+    'Modo de Preparo', 'Modo de preparo', 'Preparo',
+    // Russian
+    'Приготовление', 'Способ приготовления', 'Инструкция',
+    // Polish
+    'Przygotowanie', 'Sposób przygotowania',
+    // Arabic
+    'طريقة التحضير', 'التحضير'
+  ];
+
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Unicode-aware word boundaries: JS \\b is ASCII-only, which would not match
+  // around Turkish characters like ı, ş, ğ, ö, ü, ç (they are non-\\w in JS).
+  // (?<!\\p{L}) / (?!\\p{L}) requires the u flag and works for any letter.
+  const ingRe = new RegExp('(?<!\\p{L})(?:' + INGREDIENT_HEADERS.map(esc).join('|') + ')(?!\\p{L})\\s*[-:]?\\s*', 'iu');
+  const instRe = new RegExp('(?<!\\p{L})(?:' + INSTRUCTION_HEADERS.map(esc).join('|') + ')(?!\\p{L})\\s*:?\\s*', 'iu');
+
+  // Find the first ingredients header and the first instructions header
+  // that comes strictly after it.
+  const zMatch = caption.match(ingRe);
+  const bMatch = caption.match(instRe);
   if (!zMatch || !bMatch || bMatch.index <= zMatch.index) return null;
 
   const preText = caption.substring(0, zMatch.index).trim();
   const zutatenText = caption.substring(zMatch.index + zMatch[0].length, bMatch.index).trim();
   const zubereitungText = caption.substring(bMatch.index + bMatch[0].length).trim();
 
-  // Title: first sentence(s) before "Zutaten", or just first ~80 chars
+  // Title: first sentence(s) before the first ingredients header. Strip
+  // leading non-letter characters (emojis, hashtags, @mentions). The regex
+  // uses \\p{L} so non-Latin scripts (Cyrillic, Turkish, Arabic, …) survive.
   let title = preText
     .replace(/\s+/g, ' ')
-    .replace(/^[^A-Za-zÄÖÜäöüß]+/, '')
+    .replace(/^[^\p{L}]+/u, '')
     .trim();
   const sentenceEnd = title.search(/[.!?]\s/);
   if (sentenceEnd > 20 && sentenceEnd < 120) title = title.substring(0, sentenceEnd);
@@ -236,11 +326,15 @@ function parseGermanRecipeCaption(caption) {
   ingredients = [...new Set(merged)];
 
   // Steps: split on " - " separators (TikTok style: "- step1 - step2 - step3")
+  // Lowered the length threshold from 10 to 4 so that short imperative steps
+  // in any language (Turkish "Pişir.", English "Mix.", Italian "Cuoci.") are
+  // not silently dropped. The downstream LLM pass and human review are the
+  // real quality gates — we want to keep candidates here.
   let steps = zubereitungText
     .replace(/^[•\-\s]+/, '')
     .split(/(?:\s+)?-\s+/)
     .map(s => s.trim())
-    .filter(s => s.length >= 10);
+    .filter(s => s.length >= 4);
 
   if (ingredients.length < 2) return null;
   if (steps.length < 1) return null;

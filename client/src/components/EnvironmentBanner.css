@@ -1,0 +1,15 @@
+.environment-banner {
+  background: linear-gradient(90deg, #ff9800, #ff5722);
+  color: white;
+  text-align: center;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.environment-banner + .app {
+  margin-top: 0;
+}

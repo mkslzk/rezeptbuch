@@ -26,6 +26,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Environment detection (PROD=production, else development)
+const ENVIRONMENT = process.env.ENVIRONMENT || 'development';
+app.get('/recipe/api/environment', (req, res) => {
+  res.json({ environment: ENVIRONMENT });
+});
+
+
 initDb();
 app.use(cors());
 app.use(express.json());

@@ -117,7 +117,19 @@ export default function BatchImportPage() {
   return (
     <div className="batch-import-page">
       <div className="page-header">
-        <h1>📥 Batch-Import</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <h1 style={{ margin: 0 }}>📥 Batch-Import</h1>
+          <span style={{
+            background: '#d32f2f',
+            color: '#fff',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            padding: '0.2rem 0.55rem',
+            borderRadius: '4px',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase'
+          }}>PROD</span>
+        </div>
         <Link to="/" className="btn btn-secondary">← Zurück</Link>
       </div>
 
@@ -126,17 +138,21 @@ export default function BatchImportPage() {
           <p style={{ marginTop: 0, color: 'var(--color-text-light)' }}>
             Füge eine gemischte Liste von Rezept-URLs ein — eine pro Zeile. TikTok & Instagram werden als Video transkribiert, alle anderen Seiten werden direkt gescrapet.
           </p>
+
+          <label style={{ display: 'block', fontWeight: 600, marginBottom: '0.4rem', fontSize: '0.9rem' }}>
+            🌐 URL-Liste einfügen:
+          </label>
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
-            placeholder={'https://www.tiktok.com/@kochkanal/video/123…\nhttps://www.instagram.com/reel/abc/\nhttps://www.chefkoch.de/rezepte/12345\nhttps://www.einfachbacken.de/...'}
+            placeholder={'https://www.tiktok.com/@kochkanal/video/123…\nhttps://www.instagram.com/reel/abc/\nhttps://www.chefkoch.de/rezepte/12345\nhttps://www.einfachbacken.de/…'}
             rows={10}
             style={{
               width: '100%',
               fontFamily: 'monospace',
               fontSize: '0.9rem',
               padding: '0.6rem',
-              border: '1px solid var(--color-border)',
+              border: '2px solid var(--color-accent)',
               borderRadius: 'var(--radius)',
               background: 'var(--color-cream)',
               color: 'var(--color-text)',
@@ -144,6 +160,9 @@ export default function BatchImportPage() {
               boxSizing: 'border-box'
             }}
           />
+          <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--color-text-light)', textAlign: 'right' }}>
+            💡 Eine URL pro Zeile oder durch Komma getrennt
+          </div>
           {error && (
             <div className="status-message error" style={{ marginTop: '0.75rem' }}>{error}</div>
           )}
