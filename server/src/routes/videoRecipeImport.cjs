@@ -152,6 +152,27 @@ function isVideoUrl(url) {
   return /tiktok\.com|instagram\.com/.test(url);
 }
 
+// Check if caption text already looks like a complete recipe (has ingredients + steps)
+// If yes, we can skip expensive Whisper transcription
+function looksLikeCompleteRecipe(text) {
+  if (!text || text.length < 100) return false;
+  // Ingredient patterns: quantity + unit + food item
+  const ingredientPatterns = [
+    /\d+\s*(g|kg|ml|l|el|tl|cup|stück|stk|becher|dosen?)\s+[A-ZÄÖÜ]/i,
+    /\d+\s*\d+\/\d+\s*(g|ml|el|tl)/i,
+    /\b(eine|ein|zwei|drei|vier|fünf)\s+[A-ZÄÖÜ][a-zäöü]+/
+  ];
+  // Step patterns: numbered actions or cooking verbs
+  const stepPatterns = [
+    /\b\d+[.,]\s+(erhitzen|mischen|rühren|geben|gießen|braten|kochen|backen|schneiden|wiegen|formen|dekorieren)/i,
+    /\b(schritt|step|stufe|zuerst|dann|zuletzt|anschließend|danach)/i,
+    /\b(mischen|rühren|erhitzen|aufkochen|ablöschen|einrühren)/i
+  ];
+  const hasIngredients = ingredientPatterns.some(p => p.test(text));
+  const hasSteps = stepPatterns.some(p => p.test(text));
+  return hasIngredients && hasSteps;
+}
+
 function createBatch(items) {
   const batchId = newId('batch');
   const jobIds = items.map(item => {
@@ -225,13 +246,20 @@ async function runVideoJob(jobId) {
     patchJob(jobId, { platform: dl.platform });
     setJobMessage(jobId, 'download', `Video heruntergeladen (${(dl.sizeBytes / 1024 / 1024).toFixed(1)} MB)`, 40);
 
-    // Step 2: transcribe audio (Whisper). May be empty/garbage if no speech.
-    setJobMessage(jobId, 'transcribe', 'Transkribiere Audio (Whisper)…', 50);
+    // Step 2: Check if caption already has a complete recipe
+    // If yes, skip expensive Whisper transcription entirely
+    const captionHasRecipe = looksLikeCompleteRecipe(dl.description || '');
     let transcript = '';
-    try {
-      transcript = await transcribeVideo(videoPath, 'base');
-    } catch (e) {
-      console.warn('Whisper fehlgeschlagen, fahre mit Caption fort:', e.message);
+    if (captionHasRecipe) {
+      console.log('[videoRecipeImport] Caption looks like complete recipe - skipping Whisper');
+      setJobMessage(jobId, 'transcribe', `Caption hat Rezept ✓ (${(dl.description || '').length} Zeichen) — Whisper übersprungen`, 50);
+    } else {
+      setJobMessage(jobId, 'transcribe', 'Transkribiere Audio (Whisper)…', 50);
+      try {
+        transcript = await transcribeVideo(videoPath, 'base');
+      } catch (e) {
+        console.warn('Whisper fehlgeschlagen, fahre mit Caption fort:', e.message);
+      }
     }
     const transcriptClean = (transcript || '').trim();
 
