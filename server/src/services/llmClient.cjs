@@ -175,20 +175,34 @@ async function chat(messages, opts = {}) {
 async function chatJSON(messages, opts = {}) {
   const text = await chat(messages, opts);
   console.log('[chatJSON] raw LLM response:', text.substring(0, 500));
-  // Find the first { and match to its balanced }
-  const firstBrace = text.indexOf('{');
-  if (firstBrace < 0) throw new Error('No JSON found in LLM response');
-  let depth = 0;
-  let end = firstBrace;
-  for (let i = firstBrace; i < text.length; i++) {
-    if (text[i] === '{') depth++;
-    else if (text[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+  // Try to find JSON - either {...} or [...]
+  const firstObj = text.indexOf('{');
+  const firstArr = text.indexOf('[');
+  let start = -1;
+  let end = -1;
+  if (firstObj >= 0 && (firstArr < 0 || firstObj < firstArr)) {
+    // Object
+    start = firstObj;
+    let depth = 0;
+    for (let i = start; i < text.length; i++) {
+      if (text[i] === '{') depth++;
+      else if (text[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+    }
+  } else if (firstArr >= 0) {
+    // Array
+    start = firstArr;
+    let depth = 0;
+    for (let i = start; i < text.length; i++) {
+      if (text[i] === '[') depth++;
+      else if (text[i] === ']') { depth--; if (depth === 0) { end = i + 1; break; } }
+    }
   }
-  const jsonStr = text.substring(firstBrace, end);
+  if (start < 0 || end < 0) throw new Error('No JSON found in LLM response');
+  const jsonStr = text.substring(start, end);
   try {
     return JSON.parse(jsonStr);
   } catch (e) {
-    throw new Error('JSON parse error: ' + e.message + ' | snippet: ' + jsonStr.substring(0, 100));
+    throw new Error('JSON parse error: ' + e.message + ' | snippet: ' + jsonStr.substring(0, 200));
   }
 }
 
