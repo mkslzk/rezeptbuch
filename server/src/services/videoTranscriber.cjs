@@ -60,7 +60,7 @@ import sys
 import faster_whisper
 try:
     model = faster_whisper.WhisperModel("${model}", device="cpu", compute_type="int8")
-    segments, info = model.transcribe("${wavPath}", task="transcribe", vad_filter=True)
+    segments, info = model.transcribe("${wavPath}", task="transcribe")
     print(f"__CHARLIE_LANG__:{info.language}:{info.language_probability:.3f}", flush=True)
     # Print segments individually to avoid huge single-output truncation
     for seg in segments:
