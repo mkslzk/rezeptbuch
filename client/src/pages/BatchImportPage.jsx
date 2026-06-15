@@ -38,12 +38,25 @@ export default function BatchImportPage() {
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
 
-  // Restore in-flight batch from sessionStorage
+  // Restore in-flight batch from sessionStorage (only if still active on server)
   useEffect(() => {
     const saved = sessionStorage.getItem('batchImportId');
-    if (saved) {
-      setBatch({ batchId: saved });
-    }
+    if (!saved) return;
+    // Verify the batch still exists and is active before showing it
+    fetch(`/recipe/api/recipes/import/batch/progress?batchId=${saved}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.progress && d.progress.status === 'running') {
+          setBatch({ batchId: saved });
+        } else {
+          // Batch is done/cancelled/never-existed — clean up stale state
+          sessionStorage.removeItem('batchImportId');
+        }
+      })
+      .catch(() => {
+        // Network/server error — don't persist stale batch
+        sessionStorage.removeItem('batchImportId');
+      });
   }, []);
 
   // Poll progress while a batch is active
