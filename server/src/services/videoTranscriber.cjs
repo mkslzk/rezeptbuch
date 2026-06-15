@@ -42,20 +42,33 @@ function transcribeVideo(videoPath, model = 'small') {
         return reject(new Error('Audio-Extraktion fehlgeschlagen: ' + (lastLine || `exit ${code}`)));
       }
 
+      // Timeout: 5 minutes for Whisper transcription
+      const timeoutMs = 5 * 60 * 1000;
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        try { whisper.kill(); } catch {}
+        try { unlinkSync(wavPath); } catch {}
+        reject(new Error(`Whisper timeout after ${timeoutMs / 1000}s - falling back to caption`));
+      }, timeoutMs);
+
       // Step 2: whisper reads the WAV file directly
-      const whisper = spawn('python3', [
+      const whisper = spawn('python3', ['-u',
         '-c',
         `
 import sys
 import faster_whisper
-# faster-whisper >=1.0: WhisperModel is a class, not a function
-model = faster_whisper.WhisperModel("${model}", device="cpu", compute_type="int8")
-# Auto-detect the spoken language instead of forcing German — works for
-# Turkish / English / Arabic / etc. as well. The detected language is
-# emitted on stdout as a marker line that Node strips and logs.
-segments, info = model.transcribe("${wavPath}", task="transcribe")
-print(f"__CHARLIE_LANG__:{info.language}:{info.language_probability:.3f}", flush=True)
-print(' '.join(seg.text for seg in segments), flush=True)
+try:
+    model = faster_whisper.WhisperModel("${model}", device="cpu", compute_type="int8")
+    segments, info = model.transcribe("${wavPath}", task="transcribe", vad_filter=True)
+    print(f"__CHARLIE_LANG__:{info.language}:{info.language_probability:.3f}", flush=True)
+    # Print segments individually to avoid huge single-output truncation
+    for seg in segments:
+        print(f"__SEG__:{seg.start:.2f}:{seg.end:.2f}:{seg.text}", flush=True)
+    print("__WHISPER_DONE__", flush=True)
+except Exception as e:
+    print(f"__WHISPER_ERROR__:{e}", flush=True)
+    sys.exit(1)
 `
       ]);
 
@@ -72,22 +85,36 @@ print(' '.join(seg.text for seg in segments), flush=True)
       });
 
       whisper.on('close', wcode => {
+        if (timedOut) return;
+        clearTimeout(timer);
         try { unlinkSync(wavPath); } catch {}
         if (crashed) return;
         if (wcode === 0) {
-          // Strip the language-detection marker line emitted by the Python
-          // helper. It always lives on its own line at the very start of
-          // stdout, so we can find/remove it cheaply.
+          // Parse segments format: __SEG__:start:end:text
           const lines = transcript.split(/\r?\n/);
           const langLineIdx = lines.findIndex(l => l.startsWith('__CHARLIE_LANG__:'));
+          const doneIdx = lines.findIndex(l => l.startsWith('__WHISPER_DONE__'));
+          const errorIdx = lines.findIndex(l => l.startsWith('__WHISPER_ERROR__:'));
+          
+          if (errorIdx >= 0) {
+            const errMsg = lines[errorIdx].replace('__WHISPER_ERROR__:', '');
+            reject(new Error('Whisper error: ' + errMsg));
+            return;
+          }
+          
           if (langLineIdx >= 0) {
             const parts = lines[langLineIdx].split(':');
             const lang = parts[1] || 'unknown';
             const prob = parts[2] || '0';
             console.log(`[videoTranscriber] Whisper auto-detected language: ${lang} (confidence ${prob})`);
-            lines.splice(langLineIdx, 1);
           }
-          return resolve(lines.join('\n').trim());
+          
+          // Text is between lang line and __WHISPER_DONE__
+          let text = '';
+          if (doneIdx > 0 && langLineIdx >= 0) {
+            text = lines.slice(langLineIdx + 1, doneIdx).join(' ').trim();
+          }
+          return resolve(text);
         }
         // Surface the most informative whisper error
         const lastErr = whisperErr.trim().split('\n').filter(l => l.trim()).pop() || '';

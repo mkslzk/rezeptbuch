@@ -229,7 +229,7 @@ async function runVideoJob(jobId) {
     setJobMessage(jobId, 'transcribe', 'Transkribiere Audio (Whisper)…', 50);
     let transcript = '';
     try {
-      transcript = await transcribeVideo(videoPath, 'small');
+      transcript = await transcribeVideo(videoPath, 'base');
     } catch (e) {
       console.warn('Whisper fehlgeschlagen, fahre mit Caption fort:', e.message);
     }
