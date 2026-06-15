@@ -87,7 +87,7 @@ async function extractWithOllama(data, platform, fallbackProviders = []) {
   // English, Arabic, etc.) and is frequently a mix of several. The LLM must
   // detect the language(s), extract the recipe in whatever language it
   // appears, and still emit the final JSON in German.
-  const prompt = `You are a multilingual recipe extraction system. The input is the text of a ${platform === 'tiktok' ? 'TikTok' : 'Instagram'} cooking video. The creator may write the caption in any language (German, Turkish, English, Arabic, Russian, …) and frequently mixes multiple languages in one caption (for example a Turkish ingredient list + German instructions + English hashtags).
+  const prompt = `STRICT JSON ONLY - no text before or after the JSON block. You are a multilingual recipe extraction system. The input is the text of a ${platform === 'tiktok' ? 'TikTok' : 'Instagram'} cooking video. The creator may write the caption in any language (German, Turkish, English, Arabic, Russian, …) and frequently mixes multiple languages in one caption (for example a Turkish ingredient list + German instructions + English hashtags).
 
 Your task:
 1. Detect the language(s) present in the input.
@@ -125,6 +125,8 @@ Rules:
 - servings / prepTime / cookTime: null if unknown.
 - If the text contains no recipe, return empty arrays.
 - Do NOT invent ingredients or steps that are not in the source.
+
+CRITICAL: Output EXACTLY one valid JSON object and nothing else. No sentences before or after. Start with { and end with }.
 
 Source text:
 ${source}
