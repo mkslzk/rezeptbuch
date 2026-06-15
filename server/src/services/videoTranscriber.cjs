@@ -156,7 +156,7 @@ function extractTextFromFrames(videoPath) {
       }
 
       // Step 2: Extract frames every 3 seconds
-      const numFrames = Math.max(1, Math.floor(duration / 3));
+      const numFrames = Math.min(20, Math.max(1, Math.floor(duration / 3)));
       const extract = spawn('ffmpeg', [
         '-y', '-i', videoPath,
         '-vf', `fps=${numFrames / Math.max(duration, 1)}`,
