@@ -1,5 +1,5 @@
 const express = require('express');
-const { scrapeAllStores, getProgress, getOffers, matchItemsToOffers } = require('../services/offersScraper.cjs');
+const { scrapeAllStores, scrapeAllMarktguruStores, getProgress, getOffers, matchItemsToOffers } = require('../services/offersScraper.cjs');
 const offersHistoryRouter = require('./offersHistory.cjs');
 
 const router = express.Router();
@@ -52,6 +52,39 @@ router.post('/scrape', async (req, res) => {
 // GET progress for any running/just-finished scrape (Direkt or Marktguru)
 router.get('/scrape/progress', (req, res) => {
   res.json({ progress: getProgress() });
+});
+
+router.post('/scrape/marktguru', async (req, res) => {
+  try {
+    const current = getProgress();
+    if (current && current.status === 'running') {
+      return res.status(409).json({ error: 'Scrape läuft bereits', progress: current });
+    }
+    console.log('📡 Marktguru scrape requested via API');
+    // Run in background — response returns immediately
+    scrapeAllMarktguruStores()
+      .then(results => {
+        // Persist to history DB for each store
+        for (const [store, offers] of Object.entries(results)) {
+          const { lastInsertRowid } = offersHistoryRouter.saveScrapeRecord(store, offers.length, true, null, 'marktguru');
+          if (offers.length > 0) {
+            offersHistoryRouter.saveOffers(lastInsertRowid, store, offers, 'marktguru');
+          }
+        }
+        const total = Object.values(results).reduce((s, a) => s + a.length, 0);
+        console.log(`✅ Marktguru-Scrape persisted: ${Object.keys(results).length} stores, ${total} offers`);
+      })
+      .catch(err => {
+        console.error('Background marktguru scrape error:', err);
+        try {
+          offersHistoryRouter.saveScrapeRecord('marktguru', 0, false, String(err.message || err), 'marktguru');
+        } catch {}
+      });
+    res.json({ success: true, started: true });
+  } catch (err) {
+    console.error('POST /api/offers/scrape/marktguru error:', err);
+    res.status(500).json({ error: 'Marktguru scrape failed: ' + err.message });
+  }
 });
 
 router.get('/match', async (req, res) => {
