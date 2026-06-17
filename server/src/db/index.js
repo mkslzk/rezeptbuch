@@ -33,6 +33,9 @@ export function initDb() {
       prep_time INTEGER,
       cook_time INTEGER,
       source_url TEXT,
+      import_method TEXT,
+      video_transcript TEXT,
+      video_caption TEXT,
       is_favorite INTEGER DEFAULT 0,
       rating REAL DEFAULT 0,
       rating_count INTEGER DEFAULT 0,
@@ -103,6 +106,15 @@ export function initDb() {
     db.exec("ALTER TABLE recipes ADD COLUMN rating_count INTEGER DEFAULT 0");
   } catch (e) {
     // Column already exists, ignore
+  }
+
+  // Add video import columns if they don't exist (for existing databases)
+  for (const col of ['import_method', 'video_transcript', 'video_caption']) {
+    try {
+      db.exec(`ALTER TABLE recipes ADD COLUMN ${col} TEXT`);
+    } catch (e) {
+      // Column already exists, ignore
+    }
   }
 
   // Seed test data if empty
@@ -261,12 +273,12 @@ function seedTestData() {
   ];
 
   const stmt = db.prepare(`
-    INSERT INTO recipes (title, description, ingredients, steps, category, tags, image_url, servings, prep_time, cook_time, source_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipes (title, description, ingredients, steps, category, tags, image_url, servings, prep_time, cook_time, source_url, import_method, video_transcript, video_caption)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
   `);
 
   for (const r of recipes) {
-    stmt.run(r.title, r.description, r.ingredients, r.steps, r.category, r.tags, r.image_url, r.servings, r.prep_time, r.cook_time, r.source_url);
+    stmt.run(r.title, r.description, r.ingredients, r.steps, r.category, r.tags, r.image_url, r.servings, r.prep_time, r.cook_time, r.source_url, null, null, null);
   }
 
   console.log('🌿 Seeded 5 test recipes');
