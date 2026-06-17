@@ -32,6 +32,10 @@ RUN npm install
 
 COPY server/src /app/server/src
 
+# Install Playwright browsers (needed for scraper)
+RUN npm install playwright \
+    && npx playwright install --with-deps chromium firefox
+
 WORKDIR /app/server
 
 EXPOSE 3001
