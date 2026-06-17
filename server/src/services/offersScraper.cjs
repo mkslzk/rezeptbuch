@@ -251,7 +251,30 @@ const SCRAPE_CONFIG = {
   },
   penny: {
     browser: 'firefox', waitUntil: 'domcontentloaded', timeout: 30000,
-    scrollWait: 1000, scrollIterations: 12,
+    scrollWait: 800, scrollIterations: 20,
+    // Penny lazy-loads via "Mehr angebote" / "Mehr laden" buttons — click them while scrolling
+    preFlow: async (page) => {
+      // Scroll and click "Mehr" buttons for several cycles
+      for (let i = 0; i < 8; i++) {
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await page.waitForTimeout(1200);
+        // Try multiple button selectors
+        const mehrBtn = await page.$(
+          'button:has-text("Mehr angebote"), button:has-text("Mehr laden"), ' +
+          'button:has-text("Weitere"), button[class*="more"]:not([disabled]), ' +
+          'a:has-text("Mehr angebote"), a:has-text("Mehr laden")'
+        );
+        if (mehrBtn) {
+          try {
+            await mehrBtn.click({ force: true });
+            await page.waitForTimeout(1500);
+          } catch(e) {}
+        }
+      }
+      // Scroll back to top before extraction
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(500);
+    },
     selectors: ['article.offer-tile'],
     extractName: ($, el) => {
       return $(el).find('h3').first().text().trim().replace(/\*/g, '').trim() || '';
@@ -740,9 +763,38 @@ async function scrapeEdekaApi(storeKey, url) {
       }
     } catch(e) {}
     
+    // Discover the actual market ID from the page
+    let marketId = EDEKA_MARKET_ID;
+    try {
+      // Try to get market ID from page state
+      const extracted = await page.evaluate(() => {
+        // Try __NEXT_DATA__ or similar hydration state
+        const nextData = document.getElementById('__NEXT_DATA__');
+        if (nextData) {
+          try {
+            const parsed = JSON.parse(nextData.textContent);
+            // Walk the object looking for marketId/storeId
+            const str = JSON.stringify(parsed);
+            const m = str.match(/"marketId"\s*:\s*(\d+)/);
+            if (m) return m[1];
+            const s = str.match(/"storeNumber"\s*:\s*"?(\d+)"?/);
+            if (s) return s[1];
+          } catch(e) {}
+        }
+        // Try window state
+        const stateMatch = document.body.innerText.match(/Markt-Nr\.?\s*[:.]?\s*(\d{5,})/);
+        if (stateMatch) return stateMatch[1];
+        return null;
+      });
+      if (extracted) {
+        marketId = extracted;
+        console.log(`  📍 ${storeKey}: discovered market ID: ${marketId}`);
+      }
+    } catch(e) { console.warn(`  ⚠️ Market discovery: ${e.message}`); }
+
     // Call the internal API that the page uses
     // Use market ID from config for regional offers
-    const apiUrl = `https://www.edeka.de/api/auth-proxy/?path=api%2Foffers%3Flimit%3D999&storeNumber=${EDEKAMARKETID}`;
+    const apiUrl = `https://www.edeka.de/api/auth-proxy/?path=api%2Foffers%3Flimit%3D999&storeNumber=${marketId}`;
     
     const apiResponse = await page.evaluate(async (apiUrl) => {
       try {
