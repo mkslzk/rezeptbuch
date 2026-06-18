@@ -251,6 +251,58 @@ const SCRAPE_CONFIG = {
       return `${name}|${price}`.replace(/\s+/g, '').substring(0, 50);
     }
   },
+  // Netto-Lebensmittel: same PLZ flow as netto, but for the "Lebensmittel" category page.
+  // This page is gated by Akamai and needs the same cookie+PLZ handshake as /angebote.
+  nettoLebensmittel: {
+    browser: 'firefox', waitUntil: 'domcontentloaded', timeout: 30000,
+    scrollWait: 1000, scrollIterations: 6,
+    useStealth: true,
+    preFlow: async (page) => {
+      // Accept cookies (same as netto)
+      try {
+        await page.click('#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll');
+        await page.waitForTimeout(1500);
+      } catch(e) {}
+
+      // Enter PLZ (the /lebensmittel-angebote page also gates on PLZ)
+      const plzInput = await page.$('input[name="post_code"]');
+      if (plzInput) {
+        await plzInput.click();
+        for (const digit of PLZ) {
+          await page.keyboard.type(digit, { delay: 80 });
+          await page.waitForTimeout(50);
+        }
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(4000);
+      }
+    },
+    selectors: ['[class*="product-tile"]', '[class*="offer-tile"]', 'article[class*="product"]', '[class*="grid"] article'],
+    extractName: ($, el) => {
+      const h3 = $(el).find('h3').first();
+      if (h3.length) return h3.text().trim();
+      const nameLink = $(el).find('a[class*="name"], a[class*="title"]').first();
+      if (nameLink.length) return nameLink.text().trim();
+      return '';
+    },
+    extractPrice: ($, el) => {
+      const priceEl = $(el).find('[class*="price"]:not([class*="old"]):not([class*="original"])').first();
+      if (priceEl.length) {
+        const text = priceEl.text();
+        const match = text.match(/(\d+[.,]\d{2})/);
+        if (match) return parseFloat(match[1].replace(',', '.'));
+      }
+      const tileText = $(el).text();
+      const match = tileText.match(/(\d+[.,]\d{2})\s*[€]?/);
+      if (match) return parseFloat(match[1].replace(',', '.'));
+      return null;
+    },
+    extractOfferId: ($, el) => {
+      const name = $(el).find('h3').first().text().trim() || '';
+      const priceEl = $(el).find('[class*="price"]').first();
+      const price = priceEl.length ? priceEl.text().match(/(\d+[.,]\d{2})/)?.[1] : '';
+      return `${name}|${price}`.replace(/\s+/g, '').substring(0, 50);
+    }
+  },
   penny: {
     browser: 'firefox', waitUntil: 'domcontentloaded', timeout: 30000,
     scrollWait: 800, scrollIterations: 20,
@@ -388,11 +440,22 @@ async function ocrImage(imageUrl) {
 // ============================================================
 // OLLAMA SEMANTIC PARSING
 // ============================================================
+// Lazy-load llmClient to avoid a hard import cycle at module load
+// (offersScraper is required by routes/offers which is loaded early)
+let _llmClient = null;
+function getLlmClient() {
+  if (!_llmClient) {
+    try { _llmClient = require('./llmClient.cjs'); }
+    catch (e) { console.warn(`  ⚠️ llmClient not available: ${e.message}`); }
+  }
+  return _llmClient;
+}
+
 async function parseWithOllama(text, storeKey) {
   if (!USE_OLLAMA || !text || text.length < 10) return null;
-  
-  try {
-    const prompt = `Extract ALL product offers from this text as a JSON array.
+
+  // The actual JSON-extraction prompt used for both Ollama and fallback providers.
+  const extractPrompt = `Extract ALL product offers from this text as a JSON array.
 
 Return ONLY valid JSON (no markdown, no explanation):
 [
@@ -409,25 +472,8 @@ Rules:
 TEXT:
 ${text.substring(0, 8000)}`;
 
-    const res = await fetch(`${OLLAMA_URL}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false, options: { temperature: 0.1, num_predict: 800 } }),
-      signal: AbortSignal.timeout(60000)
-    });
-    
-    if (!res.ok) throw new Error(`Ollama ${res.status}`);
-    const data = await res.json();
-    const response = (data.response || '').trim();
-    
-    const jsonMatch = response.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const offers = JSON.parse(jsonMatch[0]).filter(o => o.name && o.price > 0);
-      if (offers.length > 0) console.log(`  🧠 Ollama ${storeKey}: ${offers.length} offers`);
-      return offers.map(o => ({ ...o, store: storeKey }));
-    }
-    
-    // Fallback: parse lines with prices directly
+  // Regex fallback used when JSON parsing fails (works on any provider).
+  const regexFallback = () => {
     const priceLines = text.split('\n').filter(line => /[\d.,]+\s*[€]/.test(line));
     const fallback = priceLines.map(line => {
       const priceMatch = line.match(/(\d+[.,]\d{2})\s*[€]?/);
@@ -436,13 +482,72 @@ ${text.substring(0, 8000)}`;
         return { name, price: parseFloat(priceMatch[1].replace(',', '.')), store: storeKey };
       }
     }).filter(Boolean);
-    
     if (fallback.length > 0) console.log(`  🔧 ${storeKey}: ${fallback.length} offers via regex fallback`);
     return fallback;
+  };
+
+  // --- Try Ollama first (cheap, local) ---
+  try {
+    const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: OLLAMA_MODEL, prompt: extractPrompt, stream: false, options: { temperature: 0.1, num_predict: 800 } }),
+      signal: AbortSignal.timeout(60000)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const response = (data.response || '').trim();
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const offers = JSON.parse(jsonMatch[0]).filter(o => o.name && o.price > 0);
+        if (offers.length > 0) console.log(`  🧠 Ollama ${storeKey}: ${offers.length} offers`);
+        return offers.map(o => ({ ...o, store: storeKey }));
+      }
+      // Ollama responded but no JSON — try regex fallback before giving up
+      const regexOffers = regexFallback();
+      if (regexOffers.length > 0) return regexOffers;
+    } else {
+      throw new Error(`Ollama ${res.status}`);
+    }
   } catch (e) {
-    console.warn(`  ⚠️ Ollama ${storeKey}: ${e.message}`);
-    return null;
+    console.warn(`  ⚠️ Ollama ${storeKey}: ${e.message} — falling back to configured LLM provider`);
   }
+
+  // --- Fallback: configured LLM provider (OpenAI, MiniMax, etc.) via llmClient ---
+  // This kicks in when Ollama is unreachable (e.g. Docker without host Ollama)
+  // OR when Ollama responds with garbage. The user picks the provider in Settings → LLM.
+  const llm = getLlmClient();
+  if (llm) {
+    try {
+      const cfg = llm.getConfig();
+      const providerKey = cfg.provider || 'ollama';
+      // Skip if primary is still ollama (would just fail again) and we have no API key
+      if (providerKey === 'ollama') {
+        return regexFallback();
+      }
+      const messages = [
+        { role: 'system', content: 'You extract structured product offers from text. Always return valid JSON arrays only.' },
+        { role: 'user', content: extractPrompt }
+      ];
+      const responseText = await llm.chat(messages, { temperature: 0.1, maxTokens: 1500 });
+      const firstArr = responseText.indexOf('[');
+      if (firstArr < 0) return regexFallback();
+      let depth = 0, end = -1;
+      for (let i = firstArr; i < responseText.length; i++) {
+        if (responseText[i] === '[') depth++;
+        else if (responseText[i] === ']') { depth--; if (depth === 0) { end = i + 1; break; } }
+      }
+      if (end < 0) return regexFallback();
+      const offers = JSON.parse(responseText.substring(firstArr, end)).filter(o => o.name && o.price > 0);
+      if (offers.length > 0) console.log(`  🌐 ${providerKey} ${storeKey}: ${offers.length} offers (fallback)`);
+      return offers.map(o => ({ ...o, store: storeKey }));
+    } catch (e) {
+      console.warn(`  ⚠️ LLM-fallback ${storeKey}: ${e.message}`);
+    }
+  }
+
+  return regexFallback();
 }
 
 // ============================================================
