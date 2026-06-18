@@ -84,7 +84,9 @@ const MARKTGURU_STORE_URLS = {
 // ============================================================
 const USE_OLLAMA = true;
 const USE_OCR = true;
-const OLLAMA_URL = 'http://localhost:11434';
+// OLLAMA_HOST: in Docker use host.docker.internal, else localhost
+const OLLAMA_HOST = process.env.OLLAMA_HOST || (process.env.DOCKER_CONTAINER ? 'host.docker.internal' : 'localhost');
+const OLLAMA_URL = `http://${OLLAMA_HOST}:11434`;
 const OLLAMA_MODEL = 'llama3.2:1b';
 
 const STORES = {
@@ -538,7 +540,9 @@ async function scrapeWithBrowser(storeKey, url, options = {}) {
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-blink-features=AutomationDetection'] 
       },
       firefox: { 
-        headless: false, 
+        // Headless: true is required in Docker / server environments (no X server).
+        // Use 'new' headless mode for better compatibility with modern sites.
+        headless: true, 
         args: ['--disable-blink-features=AutomationDetection'] 
       }
     };
@@ -753,7 +757,7 @@ async function scrapeEdekaApi(storeKey, url) {
   let browser = null;
   
   try {
-    browser = await firefox.launch({ headless: false, args: ['--disable-blink-features=AutomationDetection'] });
+    browser = await firefox.launch({ headless: true, args: ['--disable-blink-features=AutomationDetection'] });
     const page = await browser.newPage();
     await page.setViewportSize({ width: 1920, height: 1080 });
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'de-DE,de;q=0.9' });
@@ -955,7 +959,7 @@ async function scrapeAllMarktguruStores() {
   }
   
   const browser = await firefox.launch({ 
-    headless: false,
+    headless: true,
     args: ['--disable-blink-features=AutomationDetection'] 
   });
   
