@@ -222,39 +222,7 @@ app.post('/api/offers/scrape', async (req, res) => {
   }
 });
 
-// POST /api/offers/scrape/marktguru - Scrape all marktguru stores
-app.post('/api/offers/scrape/marktguru', async (req, res) => {
-  try {
-    if (!offersScraper) return res.status(500).json({ error: 'no scraper' });
-    // Reject if a scrape is already running
-    const current = offersScraper.getProgress();
-    if (current && current.status === 'running') {
-      return res.status(409).json({ error: 'Scrape läuft bereits', progress: current });
-    }
-    console.log('📡 Marktguru scrape requested');
-    // Run in background — response returns immediately so client can poll progress
-    (async () => {
-      try {
-        const results = await offersScraper.scrapeAllMarktguruStores();
-        for (const [store, offers] of Object.entries(results)) {
-          const { lastInsertRowid } = offersHistoryRouter.saveScrapeRecord(store, offers.length, true, null, 'marktguru');
-          if (offers.length > 0) offersHistoryRouter.saveOffers(lastInsertRowid, store, offers, 'marktguru');
-        }
-      } catch (e) {
-        console.error('Marktguru background scrape error:', e);
-        // Mark progress as error
-        const fs = require('fs');
-        const path = require('path');
-        // setProgress is not exported, but getProgress returns current state — for now log
-        console.error('Marktguru scrape failed:', e.message);
-      }
-    })();
-    res.json({ success: true, started: true, source: 'marktguru' });
-  } catch(e) {
-    console.error('Marktguru scrape error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
+// Marktguru scrape endpoint is registered by routes/offers.cjs (single source of truth)
 
 // Also expose offers at /recipe/api/offers
 app.get('/recipe/api/offers', (req, res) => {

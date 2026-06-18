@@ -352,6 +352,14 @@ let lastUpdated = null;
 let tesseractWorker = null;
 
 // ============================================================
+// MUTUAL SCRAPER LOCK — prevents /scrape and /scrape/marktguru
+// from running simultaneously (otherwise they clobber each
+// other's cachedOffers + lastUpdated).
+// ============================================================
+let currentScrapePromise = null;
+let currentScrapeError = null;
+
+// ============================================================
 // TESSERACT OCR
 // ============================================================
 async function getTesseractWorker() {
@@ -938,6 +946,8 @@ async function scrapeMarktguruStore(page, storeInfo) {
 }
 
 async function scrapeAllMarktguruStores() {
+  if (currentScrapePromise) throw new Error('Ein Scrape läuft bereits');
+  currentScrapePromise = (async () => {
   console.log('\n📍 Scraping marktguru.de stores...');
   const results = {};
   if (MARKTGURU_EXCLUDED_COUNT > 0) {
@@ -1002,12 +1012,13 @@ async function scrapeAllMarktguruStores() {
   });
 
   return results;
+  })();
+  try {
+    return await currentScrapePromise;
+  } finally {
+    currentScrapePromise = null;
+  }
 }
-
-
-// ============================================================
-// CHEEERIO PARSING
-// ============================================================
 function parseCheerio(html, storeKey, customSelectors = null, customExtractors = null) {
   if (!html) return [];
   
@@ -1138,6 +1149,8 @@ async function fetchWithRetry(url, retries = 2) {
 // MAIN SCRAPER
 // ============================================================
 async function scrapeAllStores() {
+  if (currentScrapePromise) throw new Error('Ein Scrape läuft bereits');
+  currentScrapePromise = (async () => {
   console.log('🔍 Scraping all stores...');
   const results = {};
   const storeKeys = Object.keys(STORES).filter(k => !STORE_EXCLUDED(k));
@@ -1210,6 +1223,12 @@ async function scrapeAllStores() {
 
   console.log(`✅ ${total} offers from ${active}/${storeCount} stores`);
   return results;
+  })();
+  try {
+    return await currentScrapePromise;
+  } finally {
+    currentScrapePromise = null;
+  }
 }
 
 // ============================================================
@@ -1300,7 +1319,14 @@ function getOffers() {
   return { offers: cachedOffers, lastUpdated };
 }
 
-process.on('exit', async () => { if (tesseractWorker) await tesseractWorker.terminate(); });
+process.on('exit', async () => { 
+  try { 
+    if (tesseractWorker) {
+      await tesseractWorker.terminate();
+      tesseractWorker = null;
+    }
+  } catch {} 
+});
 
 module.exports = {
   getProgress,

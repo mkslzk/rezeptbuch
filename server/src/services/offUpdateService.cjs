@@ -5,17 +5,46 @@
 
 const { spawn } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
-const DATA_DIR = process.env.OFF_DATA_DIR || '/home/openclaw/.openclaw/workspace/charlie/data/openfoodfacts';
+// DATA_DIR: prefer ENV, then common project paths, then homedir
+function resolveDataDir() {
+  if (process.env.OFF_DATA_DIR) return process.env.OFF_DATA_DIR;
+  // Try common project locations (legacy support)
+  const candidates = [
+    '/home/openclaw/.openclaw/workspace/charlie/data/openfoodfacts',
+    '/home/openclaw/projects/rezeptbuch/data/openfoodfacts',
+    path.join(os.homedir(), '.openclaw', 'data', 'openfoodfacts'),
+    path.join(os.homedir(), '.local', 'share', 'moca', 'openfoodfacts')
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) return dir;
+  }
+  // Fall back to env-style default (will be created on first use)
+  return process.env.OFF_DATA_DIR || path.join(os.homedir(), '.openclaw', 'data', 'openfoodfacts');
+}
+
+const DATA_DIR = resolveDataDir();
 const PROGRESS_FILE = path.join(DATA_DIR, 'progress.json');
-const PYTHON_SCRIPT = '/home/openclaw/.openclaw/workspace/charlie/scripts/openfoodfacts/off_update_python.py';
+const PYTHON_SCRIPT = process.env.OFF_PYTHON_SCRIPT
+  || path.join(os.homedir(), '.openclaw', 'workspace', 'charlie', 'scripts', 'openfoodfacts', 'off_update_python.py');
 
 let currentProcess = null;
 
 //===============================================================
+// Atomic write: write to .tmp then rename. Prevents partial reads
+// if a reader catches the file mid-write (race with Python process).
+//===============================================================
 function writeProgress(progress) {
-  fs.writeFileSync(PROGRESS_FILE, JSON.stringify(progress, null, 2));
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = PROGRESS_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(progress, null, 2));
+    fs.renameSync(tmp, PROGRESS_FILE);
+  } catch (e) {
+    console.warn(`[OFF Service] writeProgress failed: ${e.message}`);
+  }
 }
 
 function clearProgress() {
