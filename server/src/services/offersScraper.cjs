@@ -1004,6 +1004,7 @@ async function scrapeAllMarktguruStores() {
 
   const totalOffers = Object.values(results).reduce((s, a) => s + a.length, 0);
   const active = Object.values(results).filter(a => a.length > 0).length;
+  const total = MARKTGURU_STORES.length;  // Total configured Marktguru stores
   const marktguruStart = Date.now() - 60000; // Approximate: scraped for ~1 min
   const durationS = ((Date.now() - marktguruStart) / 1000).toFixed(1);
   console.log(`✅ marktguru: ${totalOffers} total offers from ${active} stores in ${durationS}s\n`);
