@@ -94,7 +94,12 @@ const STORES = {
   lidl:  { name: 'LIDL',      url: 'https://www.lidl.de/angebote' },
   netto: { name: 'Netto',      url: 'https://www.netto-online.de/angebote' },
   penny: { name: 'PENNY',     url: 'https://www.penny.de/angebote' },
-  norma: { name: 'NORMA',     url: 'https://www.norma-online.de/de/angebote/onlineprospekt/' },
+  // NORMA: scrape weekly HTML offer pages, NOT the flipbook/PDF (flipbook requires
+  // a selected filial cookie and even with one, OCR on screenshots is too lossy).
+  // The landing page at /de/angebote/ lists the current week's category URLs
+  // (ab-montag, ab-mittwoch, ab-freitag, obst-und-gemuese) which are real HTML
+  // with structured <article class="produktBoxContainer"> + aria-label price.
+  norma: { name: 'NORMA',     url: 'https://www.norma-online.de/de/angebote/' },
   rewe:  { name: 'REWE',      url: `https://www.rewe.de/angebote/?plz=${PLZ}` },
   nettoLebensmittel: { name: 'Netto Food', url: `https://www.netto-online.de/lebensmittel-angebote/c-N07941?plz=${PLZ}` },
   edeka: { name: 'EDEKA',     url: 'https://www.edeka.de/eh/angebote.jsp' }
@@ -360,10 +365,14 @@ const SCRAPE_CONFIG = {
       return `${name}|${price}`.replace(/\s+/g, '').substring(0, 60);
     }
   },
-  norma: { 
-    browser: 'firefox', waitUntil: 'networkidle', timeout: 30000,
-    isFlipbook: true,
-    scrollWait: 2000, scrollIterations: 6
+  // NORMA: replaced isFlipbook+OCR with direct HTML scraping of weekly offer pages.
+  // Discovery happens inside scrapeNormaHtml() — it fetches the landing page,
+  // extracts the week's category URLs (ab-montag, ab-mittwoch, ab-freitag,
+  // obst-und-gemuese), then parses produktBoxContainer articles from each.
+  // Each page is server-rendered HTML — no JS rendering needed, no Akamai block.
+  norma: {
+    browser: 'chromium',  // not actually used (handler branches first), keeps config compatible
+    handler: 'normaHtml'
   },
   rewe: {
     browser: 'firefox', waitUntil: 'domcontentloaded', timeout: 30000,
@@ -616,6 +625,130 @@ async function scrapeFlipbook(storeKey, url) {
     if (browser) await browser.close().catch(() => {});
     return [];
   }
+}
+
+// ============================================================
+// NORMA HTML SCRAPER — replaces flipbook+OCR for NORMA.
+// NORMA's /de/angebote/ landing page lists current-week category URLs
+// (ab-montag-DD.MM.YY/, ab-mittwoch-DD.MM.YY/, ab-freitag-DD.MM.YY/,
+// obst-und-gemuese/). Each one is server-rendered HTML with
+// <article class="produktBoxContainer"> entries that contain:
+//   - <h3 class="produktBox-txt-headline">product name</h3>
+//   - <strong class="supplier">brand</strong>
+//   - <li class="produktBox-cont-wrapper-price"><span aria-label="1,19 Euro">1,19</span></li>
+//   - <li class="produktBox-txt-price">1 kg = 11,90</li>  (optional reference price)
+// No JS rendering, no Akamai block, no OCR — ~200+ offers across ~5 pages.
+// ============================================================
+async function scrapeNormaHtml(storeKey, landingUrl) {
+  try {
+    // 1) Fetch landing page to discover weekly offer URLs.
+    const landingHtml = await fetchWithRetry(landingUrl, 2);
+    if (!landingHtml) {
+      console.warn(`  ⚠️ NORMA landing page fetch failed`);
+      return [];
+    }
+    const $landing = cheerio.load(landingHtml);
+    const weeklyUrls = new Set();
+    $landing('a[href*="/de/angebote/"]').each((_, el) => {
+      const href = $landing(el).attr('href') || '';
+      // Match: ab-montag, ab-mittwoch, ab-freitag, obst-und-gemuese
+      if (/\/de\/angebote\/(ab-(montag|mittwoch|freitag|donnerstag|dienstag|samstag|sonntag)|obst-und-gemuese)\b/i.test(href)) {
+        const cleaned = href.split('?')[0].split('#')[0];
+        // Make absolute
+        weeklyUrls.add(cleaned.startsWith('http') ? cleaned : `https://www.norma-online.de${cleaned}`);
+      }
+    });
+    const urls = [...weeklyUrls];
+    console.log(`  📋 ${storeKey}: discovered ${urls.length} weekly pages`);
+
+    if (urls.length === 0) {
+      console.warn(`  ⚠️ NORMA: no weekly URLs found on landing page`);
+      return [];
+    }
+
+    // 2) Fetch each weekly page in parallel and extract offers.
+    const allOffers = [];
+    const fetchResults = await Promise.allSettled(
+      urls.map(u => fetchWithRetry(u, 2))
+    );
+
+    for (let i = 0; i < urls.length; i++) {
+      const pageUrl = urls[i];
+      const result = fetchResults[i];
+      if (result.status !== 'fulfilled' || !result.value) {
+        console.warn(`  ⚠️ NORMA ${pageUrl.split('/').slice(-2, -1)[0]}: fetch failed`);
+        continue;
+      }
+      const offers = parseNormaPage(result.value, storeKey);
+      console.log(`  📋 ${pageUrl.split('/').slice(-2, -1)[0]}: ${offers.length} offers`);
+      allOffers.push(...offers);
+    }
+
+    // 3) Dedupe by name + price.
+    const seen = new Set();
+    const unique = [];
+    for (const o of allOffers) {
+      const key = `${o.name.toLowerCase().replace(/\s+/g, ' ').trim()}|${o.price}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(o);
+    }
+    console.log(`  ✅ ${storeKey}: ${unique.length} unique offers (${allOffers.length} raw)`);
+    return unique;
+  } catch (e) {
+    console.warn(`  ⚠️ NORMA scraper: ${e.message}`);
+    return [];
+  }
+}
+
+// Parse a single NORMA weekly page HTML into offers.
+function parseNormaPage(html, storeKey) {
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const offers = [];
+
+  $('article.produktBoxContainer').each((_, el) => {
+    const $el = $(el);
+    // Name from <h3 class="produktBox-txt-headline">
+    const name = $el.find('h3.produktBox-txt-headline').first().text().trim();
+    if (!name || name.length < 2 || name.length > 120) return;
+
+    // Price: prefer aria-label on the price span (most reliable),
+    // fallback to first price-shaped number in the article text.
+    let price = null;
+    const priceSpan = $el.find('li.produktBox-cont-wrapper-price span').first();
+    if (priceSpan.length) {
+      const ariaLabel = priceSpan.attr('aria-label') || '';
+      // aria-label looks like "1,19 Euro" or "3,79 Euro"
+      const ariaMatch = ariaLabel.match(/(\d+[.,]\d{2})/);
+      if (ariaMatch) {
+        price = parseFloat(ariaMatch[1].replace(',', '.'));
+      }
+      if (!price) {
+        const textMatch = (priceSpan.text() || '').match(/(\d+[.,]\d{2})/);
+        if (textMatch) price = parseFloat(textMatch[1].replace(',', '.'));
+      }
+    }
+    if (!price) {
+      const text = $el.text();
+      const m = text.match(/(\d+[.,]\d{2})\s*€/);
+      if (m) price = parseFloat(m[1].replace(',', '.'));
+    }
+
+    if (!price || price <= 0 || price >= 200) return;
+
+    // Optional reference price (e.g. "1 kg = 3,79") — not the sale price, skip.
+    // Sale price is what produktBox-cont-wrapper-price shows.
+
+    offers.push({
+      name: name.replace(/\*/g, '').trim().substring(0, 80),
+      price,
+      original_price: null,
+      store: storeKey
+    });
+  });
+
+  return offers;
 }
 
 // ============================================================
@@ -1291,6 +1424,9 @@ async function scrapeAllStores() {
     if (cfg.useApi) {
       console.log(`  📋 ${key}: fetching via API...`);
       results[key] = await scrapeEdekaApi(key, store.url);
+    } else if (cfg.handler === 'normaHtml') {
+      console.log(`  📋 ${key}: fetching weekly HTML pages...`);
+      results[key] = await scrapeNormaHtml(key, store.url);
     } else if (cfg.isFlipbook && USE_OCR) {
       console.log(`  📄 ${key}: flipbook+OCR...`);
       results[key] = await scrapeFlipbook(key, store.url);
