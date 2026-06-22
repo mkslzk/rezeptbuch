@@ -117,94 +117,119 @@ export default function KitchenModePage() {
       {/* Main Content */}
       <div className="kitchen-content">
         {/* Step Navigation (collapsible on mobile) */}
-        <div className="kitchen-step-nav">
+        <div className="kitchen-step-nav" role="tablist" aria-label="Kochschritte">
           {steps.map((step, i) => (
             <button
               key={i}
               className={`kitchen-step-dot ${i === currentStep ? 'active' : ''} ${completedSteps.includes(i) ? 'completed' : ''}`}
               onClick={() => { setCurrentStep(i); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
               title={`Schritt ${i + 1}`}
+              role="tab"
+              aria-selected={i === currentStep}
+              aria-label={`Schritt ${i + 1} von ${totalSteps}${completedSteps.includes(i) ? ' (erledigt)' : ''}`}
             >
               {completedSteps.includes(i) ? '✓' : i + 1}
             </button>
           ))}
         </div>
 
-        {/* Current Step Display */}
-        {totalSteps > 0 ? (
-          <div className="kitchen-step-display">
-            <div className="kitchen-step-header">
-              <span className="kitchen-step-number">Schritt {currentStep + 1}</span>
-              <button
-                className={`kitchen-step-check ${completedSteps.includes(currentStep) ? 'checked' : ''}`}
-                onClick={() => toggleStep(currentStep)}
-              >
-                {completedSteps.includes(currentStep) ? '✅ Erledigt' : '☐ Erledigt'}
+        {/* 2-column layout: Step + Timer */}
+        <div className="kitchen-grid">
+          {/* Current Step Display */}
+          {totalSteps > 0 ? (
+            <div className="kitchen-step-display">
+              <div className="kitchen-step-header">
+                <span className="kitchen-step-number">Schritt {currentStep + 1} von {totalSteps}</span>
+                <button
+                  className={`kitchen-step-check ${completedSteps.includes(currentStep) ? 'checked' : ''}`}
+                  onClick={() => toggleStep(currentStep)}
+                  aria-pressed={completedSteps.includes(currentStep)}
+                >
+                  {completedSteps.includes(currentStep) ? '✅ Erledigt' : '☐ Erledigt'}
+                </button>
+              </div>
+              <p className="kitchen-step-text">{steps[currentStep]}</p>
+
+              {/* Step Navigation Buttons */}
+              <div className="kitchen-step-controls">
+                <button
+                  className="btn btn-secondary"
+                  onClick={prevStep}
+                  disabled={currentStep === 0}
+                  title={currentStep === 0 ? 'Bereits beim ersten Schritt' : 'Vorheriger Schritt'}
+                >
+                  ← Vorheriger
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={nextStep}
+                  disabled={currentStep === totalSteps - 1}
+                  title={currentStep === totalSteps - 1 ? 'Bereits beim letzten Schritt' : 'Nächster Schritt'}
+                >
+                  Nächster →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="kitchen-no-steps">
+              <p>Keine Schritte vorhanden.</p>
+            </div>
+          )}
+
+          {/* Timer Section */}
+          <div className="kitchen-timer">
+            <h3>⏱ Timer</h3>
+            <div className="kitchen-timer-display" aria-live="polite" aria-label={`Timer: ${formatTime(timerSeconds)}`}>
+              {formatTime(timerSeconds)}
+              {timerRunning && <span className="timer-running"> ●</span>}
+            </div>
+            <div className="kitchen-timer-presets" role="group" aria-label="Timer-Schnellauswahl">
+              {[1, 2, 5, 10, 15, 20, 30].map(m => (
+                <button key={m} className="btn btn-secondary btn-sm" onClick={() => startTimer(m)} aria-label={`Timer ${m} Minuten starten`}>
+                  {m} Min
+                </button>
+              ))}
+            </div>
+            <div className="kitchen-timer-custom">
+              <label htmlFor="timer-custom-input" className="visually-hidden">Eigene Timer-Dauer in Minuten</label>
+              <input
+                id="timer-custom-input"
+                type="number"
+                min="1"
+                max="120"
+                value={timerInput}
+                onChange={e => setTimerInput(Math.max(1, parseInt(e.target.value) || 1))}
+                className="timer-input"
+                aria-label="Timer-Dauer in Minuten"
+              />
+              <span>Minuten</span>
+              <button className="btn btn-primary btn-sm" onClick={() => startTimer(timerInput)} aria-label={`Eigenen Timer für ${timerInput} Minuten starten`}>
+                Start
               </button>
             </div>
-            <p className="kitchen-step-text">{steps[currentStep]}</p>
-
-            {/* Step Navigation Buttons */}
-            <div className="kitchen-step-controls">
-              <button className="btn btn-secondary" onClick={prevStep} disabled={currentStep === 0}>
-                ← Vorheriger
-              </button>
+            <div className="kitchen-timer-controls">
               <button
-                className="btn btn-primary"
-                onClick={nextStep}
-                disabled={currentStep === totalSteps - 1}
+                className="btn btn-secondary btn-sm"
+                onClick={stopTimer}
+                disabled={!timerRunning}
+                title={!timerRunning ? 'Timer läuft nicht' : 'Timer pausieren'}
               >
-                Nächster →
+                ⏸ Pause
+              </button>
+              <button className="btn btn-danger btn-sm" onClick={resetTimer} title="Timer zurücksetzen">
+                ↺ Reset
               </button>
             </div>
-          </div>
-        ) : (
-          <div className="kitchen-no-steps">
-            <p>Keine Schritte vorhanden.</p>
-          </div>
-        )}
-
-        {/* Timer Section */}
-        <div className="kitchen-timer">
-          <h3>⏱ Timer</h3>
-          <div className="kitchen-timer-display">
-            {formatTime(timerSeconds)}
-            {timerRunning && <span className="timer-running"> ●</span>}
-          </div>
-          <div className="kitchen-timer-presets">
-            {[1, 2, 5, 10, 15, 20, 30].map(m => (
-              <button key={m} className="btn btn-secondary btn-sm" onClick={() => startTimer(m)}>
-                {m} Min
-              </button>
-            ))}
-          </div>
-          <div className="kitchen-timer-custom">
-            <input
-              type="number"
-              min="1"
-              max="120"
-              value={timerInput}
-              onChange={e => setTimerInput(Math.max(1, parseInt(e.target.value) || 1))}
-              className="timer-input"
-            />
-            <span>Minuten</span>
-            <button className="btn btn-primary btn-sm" onClick={() => startTimer(timerInput)}>
-              Start
-            </button>
-          </div>
-          <div className="kitchen-timer-controls">
-            <button className="btn btn-secondary btn-sm" onClick={stopTimer} disabled={!timerRunning}>
-              ⏸ Pause
-            </button>
-            <button className="btn btn-danger btn-sm" onClick={resetTimer}>
-              ↺ Reset
-            </button>
           </div>
         </div>
 
         {/* Ingredients Toggle */}
         <div className="kitchen-ingredients-toggle">
-          <button className="btn btn-secondary" onClick={() => setShowIngredients(!showIngredients)}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowIngredients(!showIngredients)}
+            aria-expanded={showIngredients}
+          >
             {showIngredients ? '▼ Zutaten ausblenden' : '▶ Zutaten anzeigen'} ({ingredients.length})
           </button>
         </div>

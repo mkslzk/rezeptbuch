@@ -148,20 +148,39 @@ export default function RecipeDetailPage() {
       <div className="detail-header">
         <Link to="/" className="back-link">← Zurück</Link>
         <div className="detail-actions">
-          <button className={`btn btn-favorite ${isFavorite ? 'active' : ''}`} onClick={toggleFavorite}>{isFavorite ? '★' : '☆'}</button>
-          <div className="rating-stars" onMouseLeave={() => setHoverRating(0)}>
+          <button
+            className={`btn btn-favorite ${isFavorite ? 'active' : ''}`}
+            onClick={toggleFavorite}
+            aria-label={isFavorite ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}
+            aria-pressed={isFavorite}
+          >{isFavorite ? '★' : '☆'}</button>
+          <div
+            className="rating-stars"
+            onMouseLeave={() => setHoverRating(0)}
+            role="radiogroup"
+            aria-label={`Bewertung: ${recipe.rating ? Number(recipe.rating).toFixed(1) + ' von 5 Sternen' : 'noch nicht bewertet'}`}
+          >
             {[1, 2, 3, 4, 5].map(n => (
-              <button key={n} className={`star-btn ${(hoverRating || recipe.rating || 0) >= n ? 'active' : ''}`} onMouseEnter={() => setHoverRating(n)} onClick={() => setRating(n)} title={`${n} Stern${n > 1 ? 'e' : ''}`}>{(hoverRating || recipe.rating || 0) >= n ? '★' : '☆'}</button>
+              <button
+                key={n}
+                className={`star-btn ${(hoverRating || recipe.rating || 0) >= n ? 'active' : ''}`}
+                onMouseEnter={() => setHoverRating(n)}
+                onClick={() => setRating(n)}
+                title={`${n} Stern${n > 1 ? 'e' : ''}`}
+                role="radio"
+                aria-checked={Math.round(recipe.rating || 0) === n}
+                aria-label={`${n} von 5 Sternen`}
+              >{(hoverRating || recipe.rating || 0) >= n ? '★' : '☆'}</button>
             ))}
             {recipe.rating_count > 0 && <span className="rating-count" title={`${recipe.rating_count} Bewertung${recipe.rating_count > 1 ? 'en' : ''}`}>({Number(recipe.rating).toFixed(1)} · {recipe.rating_count})</span>}
           </div>
           <button className="btn btn-accent" onClick={() => navigate(`/kitchen/${id}`)}>👨‍🍳 Kochmodus</button>
-          <button className="btn btn-accent" onClick={() => setShowAddToMealPlan(!showAddToMealPlan)}>📅 Zu Essensplan</button>
+          <button className="btn btn-accent" onClick={() => setShowAddToMealPlan(!showAddToMealPlan)} aria-expanded={showAddToMealPlan}>📅 Zu Essensplan</button>
           <button className="btn btn-secondary" onClick={handleDuplicate}>📋 Duplizieren</button>
           <button className="btn btn-secondary" onClick={() => setShowEditModal(true)}>✏️ Bearbeiten</button>
-          <button className="btn btn-secondary" onClick={handleExportJson} title="Als JSON exportieren">📤 Export</button>
-          <button className="btn btn-secondary" onClick={handleShareLink} title="Link teilen">🔗 Teilen</button>
-          <button className="btn btn-danger" onClick={handleDelete}>🗑 Löschen</button>
+          <button className="btn btn-secondary" onClick={handleExportJson} title="Als JSON exportieren" aria-label="Als JSON exportieren">📤 Export</button>
+          <button className="btn btn-secondary" onClick={handleShareLink} title="Link teilen" aria-label="Rezept-Link teilen">🔗 Teilen</button>
+          <button className="btn btn-danger" onClick={handleDelete} aria-label="Rezept löschen">🗑 Löschen</button>
         </div>
         {showAddToMealPlan && (
           <div className="add-to-plan-dropdown">
@@ -198,12 +217,29 @@ export default function RecipeDetailPage() {
           </div>
         )}
         {recipe.servings && (
-          <div className="servings-adjuster">
+          <div className="servings-adjuster" role="group" aria-label="Portionen anpassen">
             <span className="servings-label">🍽 Portionen:</span>
-            <button onClick={() => setServingMultiplier(Math.max(0.5, servingMultiplier - 0.5))}>−</button>
-            <span className="servings-count">{Math.round(recipe.servings * servingMultiplier)}</span>
-            <button onClick={() => setServingMultiplier(servingMultiplier + 0.5)}>+</button>
-            {servingMultiplier !== 1 && <button className="reset-btn" onClick={() => setServingMultiplier(1)}>↺</button>}
+            <button
+              onClick={() => setServingMultiplier(Math.max(0.5, servingMultiplier - 0.5))}
+              aria-label="Portionen verringern"
+              title="Portionen verringern (½ Schritte)"
+            >−</button>
+            <span className="servings-count" aria-live="polite" aria-label={`${Math.round(recipe.servings * servingMultiplier)} Portionen`}>
+              {Math.round(recipe.servings * servingMultiplier)}
+            </span>
+            <button
+              onClick={() => setServingMultiplier(servingMultiplier + 0.5)}
+              aria-label="Portionen erhöhen"
+              title="Portionen erhöhen (½ Schritte)"
+            >+</button>
+            {servingMultiplier !== 1 && (
+              <button
+                className="reset-btn"
+                onClick={() => setServingMultiplier(1)}
+                aria-label="Portionen zurücksetzen"
+                title="Auf Originalportionen zurücksetzen"
+              >↺</button>
+            )}
             {scalingBadge(servingMultiplier) && (
               <span className="scaling-badge" title="Zutaten werden automatisch skaliert">{scalingBadge(servingMultiplier)}</span>
             )}

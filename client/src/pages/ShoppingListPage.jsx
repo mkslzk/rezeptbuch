@@ -640,7 +640,12 @@ export default function ShoppingListPage() {
             <option key={p.id} value={p.id}>KW {getKW(p.week_start)} – {p.week_start}</option>
           ))}
         </select>
-        <button className="btn btn-primary" onClick={handleGenerate} disabled={!list}>
+        <button
+          className="btn btn-primary"
+          onClick={handleGenerate}
+          disabled={!list}
+          title={!list ? 'Bitte zuerst Essensplan auswählen' : 'Einkaufsliste neu generieren'}
+        >
           Generieren
         </button>
         <button className="btn btn-secondary" onClick={() => {

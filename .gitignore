@@ -83,3 +83,4 @@ server/src/data/user-preferences.json
 .DS_Store
 Thumbs.db
 .env
+.backups/

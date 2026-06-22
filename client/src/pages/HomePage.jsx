@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getCategoryLabel } from '../config/categories.js';
+import { getCategoryLabel, getCategoryEmoji } from '../config/categories.js';
 import RecipeFormModal from '../components/RecipeFormModal.jsx';
 
 export default function HomePage() {
@@ -94,7 +94,9 @@ export default function HomePage() {
 
       <div className="controls">
         <div className="search-bar">
+          <label htmlFor="recipe-search" className="visually-hidden">Rezepte durchsuchen</label>
           <input
+            id="recipe-search"
             type="text"
             placeholder="Rezepte durchsuchen..."
             value={searchQuery}
@@ -102,13 +104,23 @@ export default function HomePage() {
           />
         </div>
         <div className="control-row">
-          <div className="view-toggle">
-            <button className={viewMode === 'grid' ? 'active' : ''} onClick={() => setViewMode('grid')}>▦</button>
-            <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')}>☰</button>
+          <div className="view-toggle" role="group" aria-label="Ansicht wechseln">
+            <button
+              className={viewMode === 'grid' ? 'active' : ''}
+              onClick={() => setViewMode('grid')}
+              aria-label="Raster-Ansicht"
+              aria-pressed={viewMode === 'grid'}
+            >▦</button>
+            <button
+              className={viewMode === 'list' ? 'active' : ''}
+              onClick={() => setViewMode('list')}
+              aria-label="Listen-Ansicht"
+              aria-pressed={viewMode === 'list'}
+            >☰</button>
           </div>
           <div className="sort-control">
-            <label>Sortieren:</label>
-            <select value={sortBy} onChange={e => handleSortChange(e.target.value)}>
+            <label htmlFor="sort-select">Sortieren:</label>
+            <select id="sort-select" value={sortBy} onChange={e => handleSortChange(e.target.value)}>
               <option value="date">Datum</option>
               <option value="name">Name</option>
               <option value="category">Kategorie</option>
@@ -117,11 +129,24 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div className="category-filter">
-        <button className={!selectedCategory && !showFavoritesOnly ? 'active' : ''} onClick={() => { setShowFavoritesOnly(false); handleCategoryFilter(''); }}>Alle</button>
-        <button className={showFavoritesOnly ? 'active' : ''} onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}>★ Favoriten</button>
+      <div className="category-filter" role="group" aria-label="Rezepte filtern">
+        <button
+          className={!selectedCategory && !showFavoritesOnly ? 'active' : ''}
+          onClick={() => { setShowFavoritesOnly(false); handleCategoryFilter(''); }}
+          aria-pressed={!selectedCategory && !showFavoritesOnly}
+        >Alle</button>
+        <button
+          className={showFavoritesOnly ? 'active' : ''}
+          onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          aria-pressed={showFavoritesOnly}
+        >★ Favoriten</button>
         {categories.map(cat => (
-          <button key={cat} className={selectedCategory === cat ? 'active' : ''} onClick={() => handleCategoryFilter(cat)}>{getCategoryLabel(cat) || cat}</button>
+          <button
+            key={cat}
+            className={selectedCategory === cat ? 'active' : ''}
+            onClick={() => handleCategoryFilter(cat)}
+            aria-pressed={selectedCategory === cat}
+          >{getCategoryLabel(cat) || cat}</button>
         ))}
       </div>
 
@@ -143,7 +168,7 @@ export default function HomePage() {
                     onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }}
                   />
                 ) : null}
-                <div className={`card-image placeholder${recipe.image_url?.trim() ? ' hidden' : ''}`}>🍳</div>
+                <div className={`card-image placeholder${recipe.image_url?.trim() ? ' hidden' : ''}`}>{getCategoryEmoji(recipe.category)}</div>
                 <div className="card-content">
                   <h3>{recipe.title}</h3>
                   {recipe.category && <span className="card-category">{getCategoryLabel(recipe.category) || recipe.category}</span>}
@@ -152,7 +177,11 @@ export default function HomePage() {
               </div>
             ) : (
               <div className="list-inner">
-                {recipe.image_url && <img src={recipe.image_url} alt={recipe.title} className="list-image" />}
+                {recipe.image_url ? (
+                  <img src={recipe.image_url} alt={recipe.title} className="list-image" />
+                ) : (
+                  <div className="list-image list-image-placeholder" aria-hidden="true">{getCategoryEmoji(recipe.category)}</div>
+                )}
                 <div className="list-content">
                   <h3>{recipe.title}</h3>
                   {recipe.category && <span className="card-category">{getCategoryLabel(recipe.category) || recipe.category}</span>}

@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { getCategoryOptions } from '../config/categories.js';
 import Modal from './Modal.jsx';
 
-const EMPTY_INGREDIENT = { item: '', amount: '', unit: '', category: 'produce' };
+const EMPTY_INGREDIENT = { item: '', amount: '', unit: '', category: 'sonstiges' };
 const CATEGORY_OPTIONS = getCategoryOptions();
 
-const ING_CATEGORIES = ['produce', 'dairy', 'meat', 'bakery', 'pantry', 'frozen', 'beverages', 'snacks', 'sonstiges'];
 const UNITS = ['', 'g', 'kg', 'ml', 'l', 'EL', 'TL', 'Stk', 'Prise', 'Bund', 'Dose', 'Glas', 'Päckchen'];
 
 export default function RecipeFormModal({ isOpen, onClose, onSaved, initialData }) {
@@ -75,7 +74,7 @@ export default function RecipeFormModal({ isOpen, onClose, onSaved, initialData 
       });
       if (data.image_url) setImagePreview(data.image_url);
       if (data.ingredients?.length) {
-        setIngredients(data.ingredients.map(i => ({ item: i, amount: '', unit: '', category: 'produce' })));
+        setIngredients(data.ingredients.map(i => ({ item: i, amount: '', unit: '', category: 'sonstiges' })));
       }
       if (data.steps?.length) setSteps(data.steps);
       setImportUrl('');
@@ -188,23 +187,44 @@ export default function RecipeFormModal({ isOpen, onClose, onSaved, initialData 
       </div>
 
       <div className="form-row">
-        <div className="form-section">
-          <label>Bild</label>
+        <div className="form-section form-section-image">
+          <label htmlFor="recipe-image-url">Bild-URL oder Upload</label>
           {imagePreview && (
             <div className="image-preview small">
               <img src={imagePreview} alt="Vorschau" />
-              <button type="button" className="btn-remove" onClick={() => { setImagePreview(''); setUploadedImageFile(null); setForm({...form, image_url: ''}); }}>×</button>
+              <button type="button" className="btn-remove" onClick={() => { setImagePreview(''); setUploadedImageFile(null); setForm({...form, image_url: ''}); }} aria-label="Bild entfernen">×</button>
             </div>
           )}
           <div className="image-input-row">
-            <input type="url" value={form.image_url} onChange={e => handleImageUrlChange(e.target.value)} placeholder="URL" />
-            <button type="button" className="btn btn-secondary" onClick={() => fileInputRef.current?.click()}>📷</button>
-            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
+            <input
+              id="recipe-image-url"
+              type="url"
+              value={form.image_url}
+              onChange={e => handleImageUrlChange(e.target.value)}
+              placeholder="https://example.com/bild.jpg"
+              aria-label="Bild-URL eingeben"
+            />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => fileInputRef.current?.click()}
+              title="Bild-Datei vom Gerät hochladen (JPG, PNG, WebP)"
+              aria-label="Bild-Datei vom Gerät hochladen"
+            >📷 Hochladen</button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+              aria-label="Bild-Datei auswählen"
+            />
           </div>
+          <p className="form-hint">Bild per URL einfügen oder Datei vom Gerät hochladen</p>
         </div>
         <div className="form-section">
-          <label>Kategorie</label>
-          <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+          <label htmlFor="recipe-category">Kategorie</label>
+          <select id="recipe-category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
             <option value="">— Kategorie —</option>
             {CATEGORY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>

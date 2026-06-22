@@ -295,25 +295,33 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
       <div className="modal settings-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>⚙️ Einstellungen</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose} aria-label="Einstellungen schließen">×</button>
         </div>
         
-        <div className="settings-tabs">
-          <button className={`tab-btn ${activeTab === 'theme' ? 'active' : ''}`} onClick={() => setActiveTab('theme')}>🎨 Theme</button>
-          <button className={`tab-btn ${activeTab === 'location' ? 'active' : ''}`} onClick={() => setActiveTab('location')}>📍 Standort</button>
-          <button className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')}>🤖 KI</button>
-          <button className={`tab-btn ${activeTab === 'eigenmarken' ? 'active' : ''}`} onClick={() => setActiveTab('eigenmarken')}>🏷️ Eigenmarken</button>
-          <button className={`tab-btn ${activeTab === 'stores' ? 'active' : ''}`} onClick={() => setActiveTab('stores')}>🛒 Stores</button>
-          <button className={`tab-btn ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>ℹ️ Über</button>
+        <div className="settings-tabs" role="tablist" aria-label="Einstellungs-Kategorien">
+          <button className={`tab-btn ${activeTab === 'theme' ? 'active' : ''}`} onClick={() => setActiveTab('theme')} role="tab" aria-selected={activeTab === 'theme'}>🎨 Theme</button>
+          <button className={`tab-btn ${activeTab === 'location' ? 'active' : ''}`} onClick={() => setActiveTab('location')} role="tab" aria-selected={activeTab === 'location'}>📍 Standort</button>
+          <button className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')} role="tab" aria-selected={activeTab === 'ai'}>🤖 KI</button>
+          <button className={`tab-btn ${activeTab === 'eigenmarken' ? 'active' : ''}`} onClick={() => setActiveTab('eigenmarken')} role="tab" aria-selected={activeTab === 'eigenmarken'}>🏷️ Eigenmarken</button>
+          <button className={`tab-btn ${activeTab === 'stores' ? 'active' : ''}`} onClick={() => setActiveTab('stores')} role="tab" aria-selected={activeTab === 'stores'}>🛒 Stores</button>
+          <button className={`tab-btn ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')} role="tab" aria-selected={activeTab === 'about'}>ℹ️ Über</button>
         </div>
         
         <div className="settings-content">
           {activeTab === 'theme' && (
             <div className="theme-settings">
               <p className="settings-description">Wähle ein Design-Theme für dein MOCA.</p>
-              <div className="theme-swatches">
+              <div className="theme-swatches" role="radiogroup" aria-label="Theme auswählen">
                 {themes.map(theme => (
-                  <button key={theme.id} className={`theme-swatch ${currentTheme === theme.id ? 'active' : ''}`} onClick={() => handleThemeSelect(theme.id)} title={theme.name}>
+                  <button
+                    key={theme.id}
+                    className={`theme-swatch ${currentTheme === theme.id ? 'active' : ''}`}
+                    onClick={() => handleThemeSelect(theme.id)}
+                    title={theme.name}
+                    role="radio"
+                    aria-checked={currentTheme === theme.id}
+                    aria-label={`Theme: ${theme.name}`}
+                  >
                     <div className="swatch-color" style={{background: theme.colors?.['--color-accent'] || theme.colors?.['--color-brown'] || '#888'}} />
                     {currentTheme === theme.id && <span className="swatch-check">✓</span>}
                   </button>
@@ -324,7 +332,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
               {/* Dark Mode Toggle */}
               <div className="dark-mode-section" style={{marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)'}}>
                 <h4 style={{margin: '0 0 0.5rem', fontSize: '0.9rem', color: 'var(--color-text-light)'}}>🌓 Farbmodus</h4>
-                <div className="dark-mode-toggle" style={{display: 'flex', gap: '0.5rem'}}>
+                <div className="dark-mode-toggle" role="radiogroup" aria-label="Farbmodus" style={{display: 'flex', gap: '0.5rem'}}>
                   {[
                     { value: 'light', label: '☀️ Hell', desc: 'Immer hell' },
                     { value: 'system', label: '🔄 Auto', desc: 'Folgt System' },
@@ -335,6 +343,9 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
                       className={`dark-mode-btn ${colorMode === opt.value ? 'active' : ''}`}
                       onClick={() => changeColorMode(opt.value)}
                       title={opt.desc}
+                      role="radio"
+                      aria-checked={colorMode === opt.value}
+                      aria-label={opt.desc}
                       style={{
                         flex: 1,
                         padding: '0.6rem 0.8rem',
@@ -405,6 +416,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
                               checked={llmConfig.provider === key}
                               onChange={() => setLlmConfig({ ...llmConfig, provider: key })}
                               title="Als primären Provider setzen"
+                              aria-label={`${p.label || key} als primären Provider setzen`}
                             />
                           </td>
                           <td>
@@ -416,7 +428,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
                           </td>
                           <td>
                             {p.endpoint ? (
-                              <span className="provider-endpoint" title={p.endpoint}>{p.endpoint.length > 38 ? p.endpoint.substring(0,38)+'…' : p.endpoint}</span>
+                              <span className="provider-endpoint" title={p.endpoint}>{p.endpoint}</span>
                             ) : p.hasKey ? (
                               <span className="provider-status-ok">✓ API Key</span>
                             ) : (
@@ -424,8 +436,8 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
                             )}
                           </td>
                           <td>
-                            <button className="btn-icon btn-edit" onClick={() => openProviderEditor(key)} title="Bearbeiten">✏️</button>
-                            <button className="btn-icon btn-delete" onClick={() => removeProvider(key)} title="Entfernen">🗑️</button>
+                            <button className="btn-icon btn-edit" onClick={() => openProviderEditor(key)} title="Bearbeiten" aria-label={`Provider ${p.label || key} bearbeiten`}>✏️</button>
+                            <button className="btn-icon btn-delete" onClick={() => removeProvider(key)} title="Entfernen" aria-label={`Provider ${p.label || key} entfernen`}>🗑️</button>
                           </td>
                         </tr>
                       ))}
@@ -452,7 +464,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
                   <div className="provider-editor" onClick={e => e.stopPropagation()}>
                     <div className="provider-editor-header">
                       <h3>Provider hinzufügen</h3>
-                      <button className="modal-close" onClick={() => setShowAddProvider(false)}>×</button>
+                      <button className="modal-close" onClick={() => setShowAddProvider(false)} aria-label="Hinzufügen-Dialog schließen">×</button>
                     </div>
                     {!newProvider.type ? (
                       <div className="provider-type-grid">
@@ -503,7 +515,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
                   <div className="provider-editor" onClick={e => e.stopPropagation()}>
                     <div className="provider-editor-header">
                       <h3>✏️ Provider bearbeiten</h3>
-                      <button className="modal-close" onClick={() => setShowEditProvider(false)}>×</button>
+                      <button className="modal-close" onClick={() => setShowEditProvider(false)} aria-label="Bearbeiten-Dialog schließen">×</button>
                     </div>
                     <div className="provider-config-form">
                       <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'1rem',padding:'0.5rem',background:'var(--color-sepia)',borderRadius:'var(--radius)'}}>

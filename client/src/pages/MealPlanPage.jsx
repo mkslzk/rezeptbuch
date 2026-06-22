@@ -236,10 +236,10 @@ export default function MealPlanPage() {
           <h2>Noch kein Essensplan für diese Woche</h2>
           <p>Erstelle einen Plan und füge Rezepte hinzu!</p>
           <div className="cta-buttons">
-            <button className="btn btn-primary btn-large" onClick={createPlan}>
+            <button className="btn btn-primary btn-large" onClick={createPlan} title="Neuen Essensplan für diese Woche erstellen">
               + Essensplan erstellen
             </button>
-            <button className="btn btn-secondary btn-large" onClick={copyFromLastWeek}>
+            <button className="btn btn-secondary btn-large" onClick={copyFromLastWeek} title="Letzte Woche übernehmen und anpassen">
               📋 Von letzter Woche kopieren
             </button>
           </div>

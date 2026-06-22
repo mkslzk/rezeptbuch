@@ -340,7 +340,9 @@ function OffersDataView() {
               {overview.storeCounts.map(sc => (
                 <div key={`${sc.store}-${sc.source}`} className="store-overview-card">
                   <div className="store-name">{STORE_LABELS[sc.store] || sc.store}</div>
-                  <div className="store-source">{SOURCE_LABELS[sc.source] || sc.source}</div>
+                  <span className="source-badge store-source-badge" title={`Quelle: ${SOURCE_LABELS[sc.source] || sc.source}`}>
+                    {SOURCE_LABELS[sc.source] || sc.source}
+                  </span>
                   <div className="store-stats">{sc.scrape_count} Scrapes · {sc.total_offers?.toLocaleString()} Angebote</div>
                 </div>
               ))}
