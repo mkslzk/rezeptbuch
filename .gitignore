@@ -84,3 +84,6 @@ server/src/data/user-preferences.json
 Thumbs.db
 .env
 .backups/
+
+# Scratch fuer Scraping-Recherche (API-Keys, Mitschnitte)
+.opencode-scratch/
