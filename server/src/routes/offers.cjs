@@ -1,5 +1,5 @@
 const express = require('express');
-const { scrapeAllStores, scrapeAllMarktguruStores, getProgress, getOffers, matchItemsToOffers } = require('../services/offersScraper.cjs');
+const { scrapeAllStores, scrapeAllMarktguruStores, getProgress, getOffers, matchItemsToOffers, scrapeAndPersist } = require('../services/offersScraper.cjs');
 const offersHistoryRouter = require('./offersHistory.cjs');
 
 const router = express.Router();
@@ -22,19 +22,12 @@ router.post('/scrape', async (req, res) => {
       return res.status(409).json({ error: 'Scrape läuft bereits', progress: current });
     }
     console.log('📡 Scrape requested via API');
-    // Run in background — response returns immediately
-    scrapeAllStores()
-      .then(results => {
-        // Persist to history DB so "Letzter Scrape" + counts update
-        let total = 0;
-        for (const [store, offers] of Object.entries(results)) {
-          const { lastInsertRowid } = offersHistoryRouter.saveScrapeRecord(store, offers.length, true, null, 'direct');
-          if (offers.length > 0) {
-            offersHistoryRouter.saveOffers(lastInsertRowid, store, offers, 'direct');
-            total += offers.length;
-          }
-        }
-        console.log(`✅ Direkt-Scrape persisted: ${Object.keys(results).length} stores, ${total} offers`);
+    // Run in background — response returns immediately.
+    // Persistenz steckt in scrapeAndPersist() (gemeinsamer Pfad mit Auto-Scrape),
+    // damit "Letzter Scrape" + Counts auch nach einem Neustart stimmen.
+    scrapeAndPersist('direct')
+      .then(({ stores, offers }) => {
+        console.log(`✅ Direkt-Scrape persisted: ${stores} stores, ${offers} offers`);
       })
       .catch(err => {
         console.error('Background scrape error:', err);

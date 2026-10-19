@@ -17,7 +17,7 @@ function getConfig() {
   } catch (e) {}
   return {
     provider: 'ollama',
-    ollama: { endpoint: 'http://localhost:11434', model: 'llama3.2', temperature: 0.1 }
+    ollama: { endpoint: 'http://localhost:11434', model: 'llama3.2:3b', temperature: 0.1 }
   };
 }
 
@@ -69,7 +69,9 @@ const PROVIDERS = {
   ollama: {
     name: 'Ollama (Lokal)',
     endpoint: 'http://localhost:11434/api/chat',
-    defaultModel: 'llama3.2',
+    // Immer MIT Tag: Ollama kennt 'llama3.2:3b'/'llama3.2:1b', aber kein
+    // tagloses 'llama3.2' → sonst "model not found" und stiller Regex-Fallback.
+    defaultModel: 'llama3.2:3b',
     headers: () => ({
       'Content-Type': 'application/json'
     })
@@ -143,7 +145,10 @@ async function chat(messages, opts = {}) {
       model: model || 'unknown-model',
       messages,
       temperature,
-      max_tokens: maxTokens
+      max_tokens: maxTokens,
+      // stream:false — Ollama streamt per Default NDJSON und bricht sonst
+      // response.json(). OpenAI-kompatible Endpunkte akzeptieren das Feld ebenso.
+      stream: false
     };
   }
 
@@ -163,9 +168,14 @@ async function chat(messages, opts = {}) {
   // Parse response based on provider
   if (providerKey === 'anthropic') {
     return data.content?.[0]?.text || '';
-  } else {
-    return data.choices?.[0]?.message?.content || '';
   }
+  if (providerKey === 'ollama') {
+    // Ollama /api/chat liefert { message: { role, content } } — NICHT die
+    // OpenAI-Form { choices: [...] }. Ohne diesen Zweig kam immer '' zurück
+    // und jeder Import fiel still auf den Regex-Parser zurück.
+    return data.message?.content || data.choices?.[0]?.message?.content || '';
+  }
+  return data.choices?.[0]?.message?.content || '';
 }
 
 /**

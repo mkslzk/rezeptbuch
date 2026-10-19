@@ -185,72 +185,43 @@ app.put('/recipe/api/offers/config', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/offers
-app.get('/api/offers', (req, res) => {
-  try {
-    if (!offersScraper) return res.status(500).json({ error: 'no scraper' });
-    const data = offersScraper.getOffers();
-    res.json(data);
-  } catch(e) {
-    console.error('Error:', e.message);
-    res.status(500).json({ error: 'message' });
-  }
-});
+// ── Angebote: Persistenz + Auto-Scrape ────────────────────────────────────
+// Die Route-Handler für /api/offers liegen in routes/offers.cjs (single source
+// of truth). Die früheren Duplikate hier waren toter Code — Express matcht
+// immer den zuerst registrierten Router.
+const AUTO_SCRAPE_MAX_AGE_H = Number(process.env.MOCA_AUTO_SCRAPE_MAX_AGE_H || 24);
+const AUTO_SCRAPE_CHECK_MS = Number(process.env.MOCA_AUTO_SCRAPE_CHECK_MS || 30 * 60 * 1000);
 
-// POST /api/offers/scrape - Scrape all direct store URLs
-app.post('/api/offers/scrape', async (req, res) => {
+if (offersScraper) {
+  // Letzten Scrape-Stand aus der DB holen — der Angebote-Tab ist damit auch
+  // direkt nach einem Neustart gefüllt, bis ein neuer Scrape läuft.
   try {
-    if (!offersScraper) return res.status(500).json({ error: 'no scraper' });
-    console.log('📡 Scrape requested (direct stores)');
-    const results = await offersScraper.scrapeAllStores();
-    
-    // Save to history DB
-    for (const [store, offers] of Object.entries(results)) {
-      const { lastInsertRowid } = offersHistoryRouter.saveScrapeRecord(store, offers.length, true, null, 'direct');
-      if (offers.length > 0) offersHistoryRouter.saveOffers(lastInsertRowid, store, offers, 'direct');
+    const { stores, offers, lastUpdated } = offersScraper.hydrateOffersFromHistory();
+    console.log(stores > 0
+      ? `♻️  Angebote wiederhergestellt: ${offers} Angebote aus ${stores} Stores (Stand ${lastUpdated})`
+      : 'ℹ️  Keine persistierten Angebote gefunden — der erste Scrape startet automatisch');
+  } catch (e) {
+    console.error('⚠️  Angebots-Persistenz konnte nicht geladen werden:', e.message);
+  }
+
+  function autoScrapeIfStale() {
+    try {
+      if (offersScraper.getProgress()?.status === 'running') return;
+      const { lastUpdated } = offersScraper.getOffers();
+      const ageH = lastUpdated ? (Date.now() - Date.parse(lastUpdated)) / 3_600_000 : Infinity;
+      if (ageH < AUTO_SCRAPE_MAX_AGE_H) return;
+      console.log(`📡 Auto-Scrape (Bestand: ${Number.isFinite(ageH) ? ageH.toFixed(1) + ' h alt' : 'leer'})`);
+      offersScraper.scrapeAndPersist('direct')
+        .then(({ stores, offers }) => console.log(`✅ Auto-Scrape fertig: ${offers} Angebote aus ${stores} Stores`))
+        .catch(e => console.error('⚠️  Auto-Scrape fehlgeschlagen:', e.message));
+    } catch (e) {
+      console.error('⚠️  Auto-Scrape-Check fehlgeschlagen:', e.message);
     }
-    
-    res.json({ 
-      success: true, 
-      storesScraped: Object.keys(results).length,
-      totalOffers: Object.values(results).reduce((s, a) => s + a.length, 0),
-      lastUpdated: new Date().toISOString()
-    });
-  } catch(e) {
-    console.error('Scrape error:', e.message);
-    res.status(500).json({ error: e.message });
   }
-});
 
-// Marktguru scrape endpoint is registered by routes/offers.cjs (single source of truth)
-
-// Also expose offers at /recipe/api/offers
-app.get('/recipe/api/offers', (req, res) => {
-  try {
-    if (!offersScraper) return res.status(500).json({ error: 'no scraper' });
-    const data = offersScraper.getOffers();
-    res.json(data);
-  } catch(e) {
-    console.error('Error:', e.message);
-    res.status(500).json({ error: 'e.message' });
-  }
-});
-
-app.post('/recipe/api/offers/scrape', async (req, res) => {
-  try {
-    if (!offersScraper) return res.status(500).json({ error: 'no scraper' });
-    const results = await offersScraper.scrapeAllStores();
-    res.json({ 
-      success: true, 
-      storesScraped: Object.keys(results).length,
-      totalOffers: Object.values(results).reduce((s, a) => s + a.length, 0),
-      lastUpdated: new Date().toISOString()
-    });
-  } catch(e) {
-    console.error('Scrape error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
+  setTimeout(autoScrapeIfStale, 15_000);                        // kurz nach dem Start
+  setInterval(autoScrapeIfStale, AUTO_SCRAPE_CHECK_MS);         // danach regelmäßig
+}
 
 // Serve React static files from client/dist
 const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');

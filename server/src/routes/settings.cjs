@@ -136,7 +136,9 @@ async function testLLMProvider(provider, endpoint, apiKey, model) {
   if (provider === 'anthropic') {
     body = { model, max_tokens: 10, messages };
   } else {
-    body = { model, messages, max_tokens: 50 };
+    // stream:false — Ollama streamt per Default (NDJSON) und bricht sonst
+    // jedes response.json() ab.
+    body = { model, messages, max_tokens: 50, stream: false };
   }
 
   const resp = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
@@ -155,10 +157,15 @@ async function testLLMProvider(provider, endpoint, apiKey, model) {
 
   const data = JSON.parse(text);
   if (provider === 'anthropic') {
-    return { model, response: data.content?.[0]?.text || 'OK' };
-  } else {
-    return { model, response: data.choices?.[0]?.message?.content || 'OK' };
+    return { model, response: data.content?.[0]?.text || '' };
   }
+  if (provider === 'ollama') {
+    // Ollama /api/chat → { message: { content } }. Vorher fehlte dieser Zweig:
+    // die Antwort war immer leer und fiel auf ein festes 'OK' zurück — der Test
+    // meldete Erfolg, auch wenn gar nichts geparst wurde.
+    return { model, response: data.message?.content || '' };
+  }
+  return { model, response: data.choices?.[0]?.message?.content || '' };
 }
 
 module.exports = router;

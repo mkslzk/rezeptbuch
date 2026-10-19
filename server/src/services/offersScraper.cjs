@@ -1566,6 +1566,100 @@ function getOffers() {
   return { offers: cachedOffers, lastUpdated };
 }
 
+// ============================================================
+// PERSISTENZ: letzten Scrape-Stand aus der DB zurückholen
+// ============================================================
+/**
+ * Füllt den In-Memory-Cache aus dem letzten persistierten Scrape je Store.
+ * Damit überlebt der Angebote-Stand einen Neustart, bis ein neuer Scrape läuft.
+ * Quelle: rezeptbuch.db (offer_scrape_records + offer_history).
+ * @returns {{stores:number, offers:number, lastUpdated:string|null}}
+ */
+function hydrateOffersFromHistory({ waveWindowMs = 15 * 60 * 1000 } = {}) {
+  const dbPath = path.join(__dirname, '..', 'data', 'rezeptbuch.db');
+  if (!fs.existsSync(dbPath)) return { stores: 0, offers: 0, lastUpdated: null };
+
+  const Database = require('better-sqlite3');
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    // Nur der jüngste Scrape-DURCHLAUF wird wiederhergestellt — nicht der
+    // jüngste Scrape pro Store. Sonst mischen sich z. B. die Mai-Marktguru-Daten
+    // (hellweg, obi, toom …) unter die aktuellen Direkt-Angebote und alte
+    // Preise sähen aus wie heute gültige.
+    const recent = db.prepare(`
+      SELECT id, store, scraped_at
+      FROM offer_scrape_records
+      WHERE success = 1 AND offer_count > 0
+      ORDER BY id DESC
+      LIMIT 500
+    `).all();
+
+    if (recent.length === 0) return { stores: 0, offers: 0, lastUpdated: null };
+
+    const anchor = Date.parse(recent[0].scraped_at);
+    const newestPerStore = new Map();   // store -> scrape_id (recent ist DESC)
+    for (const rec of recent) {
+      const t = Date.parse(rec.scraped_at);
+      if (!Number.isFinite(t) || anchor - t > waveWindowMs) continue;
+      if (!newestPerStore.has(rec.store)) newestPerStore.set(rec.store, rec.id);
+    }
+
+    const ids = [...newestPerStore.values()];
+    const rows = db.prepare(`
+      SELECT h.store, h.product_name, h.price, h.url, h.original_price,
+             h.offer_id, h.source_url, h.scraped_at
+      FROM offer_history h
+      WHERE h.scrape_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY h.store, h.product_name
+    `).all(...ids);
+
+    if (rows.length === 0) return { stores: 0, offers: 0, lastUpdated: null };
+
+    const restored = {};
+    let newest = null;
+    for (const row of rows) {
+      if (!restored[row.store]) restored[row.store] = [];
+      restored[row.store].push({
+        name: row.product_name,
+        price: row.price,
+        original_price: row.original_price ?? null,
+        url: row.url || undefined,
+        offer_id: row.offer_id || null,
+        source_url: row.source_url || null,
+        store: row.store
+      });
+      if (!newest || row.scraped_at > newest) newest = row.scraped_at;
+    }
+
+    cachedOffers = restored;
+    lastUpdated = newest;
+    return { stores: Object.keys(restored).length, offers: rows.length, lastUpdated: newest };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Scrape + Persistenz in EINEM Schritt — der gemeinsame Pfad für die API-Route,
+ * den Auto-Scrape beim Start und alles, was später dazukommt. Verhindert, dass
+ * Scrape-Ergebnisse je nach Aufrufer mal in der DB landen und mal nicht.
+ * @returns {Promise<{stores:number, offers:number}>}
+ */
+async function scrapeAndPersist(source = 'direct') {
+  const results = await scrapeAllStores();
+  const { saveScrapeRecord, saveOffers } = require('../routes/offersHistory.cjs');
+
+  let total = 0;
+  for (const [store, offers] of Object.entries(results)) {
+    const { lastInsertRowid } = saveScrapeRecord(store, offers.length, true, null, source);
+    if (offers.length > 0) {
+      saveOffers(lastInsertRowid, store, offers, source);
+      total += offers.length;
+    }
+  }
+  return { stores: Object.keys(results).length, offers: total };
+}
+
 process.on('exit', async () => { 
   try { 
     if (tesseractWorker) {
@@ -1577,4 +1671,5 @@ process.on('exit', async () => {
 
 module.exports = {
   getProgress,
+  hydrateOffersFromHistory, scrapeAndPersist,
   scrapeAllStores, scrapeAllMarktguruStores, getOffers, matchItemsToOffers, MARKTGURU_STORES };
