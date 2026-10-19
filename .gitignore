@@ -91,3 +91,4 @@ Thumbs.db
 .opencode-scratch/
 # DB-Backups (VACUUM INTO / cp) nie committen
 server/src/data/*.db.*
+server/src/data/kaufda-geo.json

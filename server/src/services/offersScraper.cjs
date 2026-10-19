@@ -4,6 +4,7 @@ const { createWorker } = require('tesseract.js');
 const fs = require('fs');
 const path = require('path');
 const marktguruApi = require('./marktguruApi.cjs');
+const kaufdaApi = require('./kaufdaApi.cjs');
 
 // Load PLZ and EDEKA market ID from offers-config.json at runtime
 function getConfig() {
@@ -107,6 +108,14 @@ const API_STORE_NAMES = {
 // Ketten für den API-Sweep, falls offers-config.json nichts vorgibt (Lebensmittel-Fokus)
 const DEFAULT_API_STORES = [
   'lidl', 'penny', 'rewe', 'kaufland', 'netto-marken-discount', 'aldi-sued', 'edeka',
+];
+
+// Phase B: Kaufda deckt zusätzlich Ketten ab, die Marktguru nicht (oder nur mit Alt-Treffern) führt
+// und liefert flächendeckend echte Streichpreise (Kaufland 278/484, Lidl 207/439).
+const DEFAULT_KAUFDA_STORES = [
+  'lidl', 'kaufland', 'rewe', 'edeka', 'penny', 'aldi-sued', 'aldi-nord',
+  'netto-marken-discount', 'netto-supermarkt', 'norma', 'nahkauf', 'marktkauf',
+  'famila', 'combi', 'v-markt', 'globus', 'tegut', 'e-center', 'metro', 'denns-biomarkt',
 ];
 
 function storeDisplayName(key) {
@@ -1646,7 +1655,7 @@ function hydrateOffersFromHistory({ waveWindowMs = 15 * 60 * 1000 } = {}) {
       SELECT h.store, h.product_name, h.price, h.url, h.original_price,
              h.offer_id, h.source_url, h.scraped_at,
              h.brand, h.valid_from, h.valid_to, h.discount_percent, h.old_price_source,
-             h.unit_price, h.unit
+             h.unit_price, h.unit, h.category, h.description
       FROM offer_history h
       WHERE h.scrape_id IN (${ids.map(() => '?').join(',')})
       ORDER BY h.store, h.product_name
@@ -1673,6 +1682,8 @@ function hydrateOffersFromHistory({ waveWindowMs = 15 * 60 * 1000 } = {}) {
         old_price_source: row.old_price_source || null,
         unit_price: row.unit_price ?? null,
         unit: row.unit || null,
+        category: row.category || null,
+        description: row.description || null,
         upcoming: row.valid_from ? Date.parse(row.valid_from) > Date.now() : false,
       });
       if (!newest || row.scraped_at > newest) newest = row.scraped_at;
@@ -1704,10 +1715,13 @@ async function scrapeAndPersist(source = 'marktguru') {
   let stores = 0;
   for (const [store, offers] of Object.entries(byStore)) {
     const per = stats.perStore[store] || {};
-    const record = saveScrapeRecord(store, offers.length, !per.error, per.error || null, dbSource, per.ms ?? null);
+    // Quelle je Store bestimmen: reine Kaufda-Ketten sollen auch als solche in der Historie stehen
+    const allKaufda = offers.length > 0 && offers.every((o) => o.source === 'kaufda');
+    const recordSource = allKaufda ? 'kaufda' : dbSource;
+    const record = saveScrapeRecord(store, offers.length, !per.error, per.error || null, recordSource, per.ms ?? null);
     stores++;
     if (offers.length > 0) {
-      saveOffers(record.lastInsertRowid, store, offers, dbSource);
+      saveOffers(record.lastInsertRowid, store, offers, recordSource);
       total += offers.length;
     }
   }
@@ -1755,6 +1769,123 @@ function applyHistoryFallback(offer, history) {
   offer.old_price_source = 'history';
   offer.discount_percent = pct;
   return true;
+}
+
+/** Ketten für den Kaufda-Sweep (Config → Default), ohne ausgeschlossene bzw. deaktivierte. */
+function getKaufdaStores() {
+  const live = getConfig();
+  if (live.kaufdaEnabled === false) return [];
+  const configured = Array.isArray(live.kaufdaStores) && live.kaufdaStores.length
+    ? live.kaufdaStores
+    : DEFAULT_KAUFDA_STORES;
+  return configured.filter((k) => !STORE_EXCLUDED(k));
+}
+
+/** Vergleichsschlüssel für Produktnamen (Buchstaben/Ziffern, Whitespace normalisiert). */
+function offerNameKey(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9äöüß]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Führt Kaufda-Ergebnisse mit dem Marktguru/NORMA-Bestand zusammen.
+ *  - Kette existiert schon → nur fehlende Streichpreise ergänzen (keine Dubletten)
+ *  - Kette ist neu          → komplett übernehmen (Kaufda deckt Ketten ab, die Marktguru nicht führt)
+ *
+ * Sicherheitsregeln gegen falsche Streichpreise:
+ *  - Der Kaufda-Streichpreis muss echt über dem Zielpreis liegen (min. 2 % Abstand) —
+ *    sonst würde der Preis einer anderen Packungsgröße übernommen.
+ *  - Fuzzy-Match nur ab 0.92 Ähnlichkeit; exakte Namensgleichheit hat Vorrang.
+ *  - `discount_percent` wird aus Zielpreis und altem Preis NEU berechnet, nie kopiert.
+ * @returns {{enriched:number, added:number, addedStores:string[], exact:number, fuzzy:number, rejected:number}}
+ */
+function mergeKaufdaOffers(byStore, kaufdaByStore, stats) {
+  let enriched = 0;
+  let added = 0;
+  let exact = 0;
+  let fuzzy = 0;
+  let rejected = 0;
+  const addedStores = [];
+
+  for (const [storeKey, kdOffers] of Object.entries(kaufdaByStore || {})) {
+    if (!Array.isArray(kdOffers) || kdOffers.length === 0) continue;
+    const existing = byStore[storeKey];
+    const per = stats.perStore[storeKey] || (stats.perStore[storeKey] = {});
+
+    if (Array.isArray(existing) && existing.length > 0) {
+      const index = new Map();
+      for (const o of existing) {
+        const key = offerNameKey(o.name);
+        if (!index.has(key)) index.set(key, []);
+        index.get(key).push(o);
+      }
+      let storeEnriched = 0;
+      let storeExact = 0;
+      let storeFuzzy = 0;
+      let storeRejected = 0;
+
+      for (const k of kdOffers) {
+        if (!k.original_price) continue;
+        const key = offerNameKey(k.name);
+        let target = null;
+        let isExact = false;
+
+        // 1) exakter Name, aber nur wenn der Preis plausibel ist (gleiche Packungsgröße)
+        for (const cand of index.get(key) || []) {
+          if (k.original_price > (cand.price * 1.02) && !cand.original_price) { target = cand; isExact = true; break; }
+        }
+        // 2) Fuzzy nur mit sehr hoher Ähnlichkeit
+        if (!target) {
+          let best = null;
+          let bestScore = 0;
+          for (const o of existing) {
+            if (o.original_price) continue;
+            const s = fuzzyMatch(k.name, o.name);
+            if (s > bestScore) { bestScore = s; best = o; }
+          }
+          if (best && bestScore >= 0.92 && k.original_price > best.price * 1.02) target = best;
+        }
+
+        if (!target) { storeRejected++; continue; }
+
+        const pct = marktguruApi.discountPercent(target.price, k.original_price);
+        if (pct === null) { storeRejected++; continue; }
+
+        target.original_price = k.original_price;
+        target.discount_percent = pct;
+        target.old_price_source = k.old_price_source || 'kaufda';
+        storeEnriched++;
+        if (isExact) storeExact++; else storeFuzzy++;
+      }
+
+      per.kaufdaEnriched = storeEnriched;
+      per.kaufdaExact = storeExact;
+      per.kaufdaFuzzy = storeFuzzy;
+      per.kaufdaRejected = storeRejected;
+      per.kaufdaOffers = kdOffers.length;
+      per.strikePrice = existing.filter((o) => o.original_price).length;
+      enriched += storeEnriched;
+      exact += storeExact;
+      fuzzy += storeFuzzy;
+      rejected += storeRejected;
+    } else {
+      byStore[storeKey] = kdOffers;
+      addedStores.push(storeKey);
+      added += kdOffers.length;
+      stats.stores++;
+      stats.total += kdOffers.length;
+      per.total = kdOffers.length;
+      per.live = kdOffers.length;
+      per.strikePrice = kdOffers.filter((o) => o.original_price).length;
+      per.source = 'kaufda';
+      per.ms = per.ms || 0;
+    }
+  }
+
+  return { enriched, added, addedStores, exact, fuzzy, rejected };
 }
 
 /**
@@ -1826,6 +1957,40 @@ async function scrapeAllSources(source = 'marktguru') {
       }
     }
 
+    // Phase B: Kaufda — echte Streichpreise + Ketten, die Marktguru nicht führt
+    const kaufdaStores = getKaufdaStores();
+    let kaufdaSummary = { enriched: 0, added: 0, addedStores: [] };
+    if (kaufdaStores.length > 0) {
+      const t0 = Date.now();
+      setProgress({
+        stage: 'enriching', status: 'running',
+        message: `Kaufda: Streichpreise für ${kaufdaStores.length} Ketten…`,
+        progress: 90, currentStore: step, totalStores: totalSteps,
+        currentStoreName: 'Kaufda', source,
+      });
+      try {
+        const kd = await kaufdaApi.sweep(kaufdaStores, {
+          plz: PLZ,
+          historyLookup: historyLookupFor,
+          onStore: (storeKey, s) => {
+            setProgress({
+              stage: 'enriching', status: 'running',
+              message: `Kaufda ${storeDisplayName(storeKey)} — ${s.live} Angebote`,
+              progress: 90, currentStore: step, totalStores: totalSteps,
+              currentStoreName: storeDisplayName(storeKey), source,
+            });
+          },
+        });
+        kaufdaSummary = { ...mergeKaufdaOffers(byStore, kd.byStore, stats), ms: Date.now() - t0 };
+        console.log(`  🟠 Kaufda: ${kaufdaSummary.enriched} Streichpreise ergänzt, `
+          + `${kaufdaSummary.added} Angebote aus ${kaufdaSummary.addedStores.length} neuen Ketten`
+          + ` (${(kaufdaSummary.ms / 1000).toFixed(1)} s)`);
+      } catch (e) {
+        kaufdaSummary = { enriched: 0, added: 0, addedStores: [], error: e.message };
+        console.warn(`  ⚠️ Kaufda übersprungen: ${e.message}`);
+      }
+    }
+
     cachedOffers = byStore;
     lastUpdated = new Date().toISOString();
     const durationMs = Date.now() - startTime;
@@ -1837,13 +2002,14 @@ async function scrapeAllSources(source = 'marktguru') {
       message: `${total} Angebote aus ${active}/${Object.keys(byStore).length} Ketten in ${(durationMs / 1000).toFixed(1)} s`,
       progress: 100,
       currentStore: Object.keys(byStore).length, totalStores: Object.keys(byStore).length,
-      stats: { ...stats, totalOffers: total, activeStores: active, durationS: (durationMs / 1000).toFixed(1) },
+      stats: { ...stats, kaufda: kaufdaSummary, totalOffers: total, activeStores: active, durationS: (durationMs / 1000).toFixed(1) },
       source,
     });
 
     console.log(`✅ API-Sweep: ${total} Angebote aus ${active} Ketten in ${(durationMs / 1000).toFixed(1)} s`
       + ` (${stats.withStrikePrice} mit altem Preis, ${stats.droppedExpired} abgelaufene verworfen)`);
 
+    stats.kaufda = kaufdaSummary;
     return { byStore, stats, durationMs };
   })();
 
@@ -1870,6 +2036,7 @@ process.on('exit', async () => {
 module.exports = {
   getProgress,
   hydrateOffersFromHistory, scrapeAndPersist,
-  scrapeAllSources, getApiRetailers, storeDisplayName, DEFAULT_API_STORES,
+  scrapeAllSources, getApiRetailers, getKaufdaStores, storeDisplayName,
+  DEFAULT_API_STORES, DEFAULT_KAUFDA_STORES, mergeKaufdaOffers,
   // Legacy (Phase C räumt die Browser-/OCR-Pfade ab):
   scrapeAllStores, scrapeAllMarktguruStores, getOffers, matchItemsToOffers, MARKTGURU_STORES };

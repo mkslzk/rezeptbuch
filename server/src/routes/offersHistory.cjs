@@ -53,6 +53,8 @@ const priceHistoryColumns = [
   "ALTER TABLE offer_history ADD COLUMN old_price_source TEXT",
   "ALTER TABLE offer_history ADD COLUMN unit_price REAL",
   "ALTER TABLE offer_history ADD COLUMN unit TEXT",
+  "ALTER TABLE offer_history ADD COLUMN category TEXT",
+  "ALTER TABLE offer_history ADD COLUMN description TEXT",
   "ALTER TABLE offer_scrape_records ADD COLUMN duration_ms INTEGER"
 ];
 
@@ -418,14 +420,15 @@ module.exports.saveOffers = (scrapeId, store, offers, source = 'direct') => {
   const stmt = db.prepare(`
     INSERT INTO offer_history
       (scrape_id, store, product_name, price, url, scraped_at, original_price, source, offer_id, source_url,
-       brand, valid_from, valid_to, discount_percent, old_price_source, unit_price, unit)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       brand, valid_from, valid_to, discount_percent, old_price_source, unit_price, unit, category, description)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertMany = db.transaction((items) => {
     for (const o of items) {
       stmt.run(
         scrapeId, store, o.name, o.price, o.url || null, scrapedAt,
-        o.original_price || null, source,
+        o.original_price || null,
+        o.source || source,
         o.offer_id || null,
         o.source_url || null,
         o.brand || null,
@@ -434,7 +437,9 @@ module.exports.saveOffers = (scrapeId, store, offers, source = 'direct') => {
         typeof o.discount_percent === 'number' ? o.discount_percent : null,
         o.old_price_source || null,
         typeof o.unit_price === 'number' ? o.unit_price : null,
-        o.unit || null
+        o.unit || null,
+        o.category || null,
+        o.description || null
       );
     }
   });

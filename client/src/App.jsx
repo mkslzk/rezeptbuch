@@ -5,6 +5,7 @@ import RecipeDetailPage from './pages/RecipeDetailPage';
 import RecipeFormPage from './pages/RecipeFormPage';
 import MealPlanPage from './pages/MealPlanPage';
 import ShoppingListPage from './pages/ShoppingListPage';
+import OffersPage from './pages/OffersPage.jsx';
 import AdminPanel from './pages/AdminPanel.jsx';
 import BatchImportPage from './pages/BatchImportPage.jsx';
 import OnboardingPage from './pages/OnboardingPage.jsx';
@@ -64,6 +65,7 @@ function App() {
                 <a href="/recipe"><span class="nav-text">Rezepte</span></a>
                 <a href="/recipe/meal-plan">📅<span class="nav-text">Essensplan</span></a>
                 <a href="/recipe/shopping-list">🛒<span class="nav-text">Einkauf</span></a>
+                <a href="/recipe/offers">🏷️<span class="nav-text">Angebote</span></a>
                 <a href="/recipe/admin">🔧<span class="nav-text">Admin</span></a>
               </nav>
               <button
@@ -84,6 +86,7 @@ function App() {
               <Route path="/recipe/:id/edit" element={<RecipeFormPage />} />
               <Route path="/meal-plan" element={<MealPlanPage />} />
               <Route path="/shopping-list" element={<ShoppingListPage />} />
+              <Route path="/offers" element={<OffersPage />} />
               <Route path="/admin" element={<AdminPanel />} />
               <Route path="/batch" element={<BatchImportPage />} />
               <Route path="/shared/:id" element={<SharedRecipePage />} />
