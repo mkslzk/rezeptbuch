@@ -188,7 +188,23 @@ const STORE_LABELS = {
   'aldi': 'ALDI',
   'edeka': 'EDEKA',
   'metro': 'METRO',
-  'real': 'real'
+  'real': 'real',
+  // API-Pipeline (Phase A): Marktguru `uniqueName`s
+  'aldi-sued': 'ALDI SÜD',
+  'aldi-nord': 'ALDI NORD',
+  'netto-supermarkt': 'Netto (rot)',
+  'norma': 'NORMA',
+  'marktkauf': 'Marktkauf',
+  'famila': 'famila',
+  'combi': 'Combi',
+  'v-markt': 'V-Markt',
+  'globus': 'Globus',
+  'tegut': 'tegut',
+  'e-center': 'E-Center',
+  'denns-biomarkt': 'denns BioMarkt',
+  'rossmann': 'Rossmann',
+  'dm': 'dm-drogerie markt',
+  'mueller': 'Müller'
 };
 
 function getOffersConfig() {

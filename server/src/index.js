@@ -211,8 +211,8 @@ if (offersScraper) {
       const ageH = lastUpdated ? (Date.now() - Date.parse(lastUpdated)) / 3_600_000 : Infinity;
       if (ageH < AUTO_SCRAPE_MAX_AGE_H) return;
       console.log(`📡 Auto-Scrape (Bestand: ${Number.isFinite(ageH) ? ageH.toFixed(1) + ' h alt' : 'leer'})`);
-      offersScraper.scrapeAndPersist('direct')
-        .then(({ stores, offers }) => console.log(`✅ Auto-Scrape fertig: ${offers} Angebote aus ${stores} Stores`))
+      offersScraper.scrapeAndPersist('marktguru')
+        .then(({ stores, offers, durationMs }) => console.log(`✅ Auto-Scrape fertig: ${offers} Angebote aus ${stores} Ketten (${(durationMs / 1000).toFixed(1)} s)`))
         .catch(e => console.error('⚠️  Auto-Scrape fehlgeschlagen:', e.message));
     } catch (e) {
       console.error('⚠️  Auto-Scrape-Check fehlgeschlagen:', e.message);

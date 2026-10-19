@@ -25,14 +25,15 @@ router.post('/scrape', async (req, res) => {
     // Run in background — response returns immediately.
     // Persistenz steckt in scrapeAndPersist() (gemeinsamer Pfad mit Auto-Scrape),
     // damit "Letzter Scrape" + Counts auch nach einem Neustart stimmen.
-    scrapeAndPersist('direct')
-      .then(({ stores, offers }) => {
-        console.log(`✅ Direkt-Scrape persisted: ${stores} stores, ${offers} offers`);
+    // Phase A (2026-10-19): Quelle ist die Marktguru-JSON-API (± NORMA direkt).
+    scrapeAndPersist('marktguru')
+      .then(({ stores, offers, durationMs }) => {
+        console.log(`✅ Scrape persisted: ${stores} Ketten, ${offers} offers, ${(durationMs / 1000).toFixed(1)} s`);
       })
       .catch(err => {
         console.error('Background scrape error:', err);
         try {
-          offersHistoryRouter.saveScrapeRecord('direkt', 0, false, String(err.message || err), 'direct');
+          offersHistoryRouter.saveScrapeRecord('marktguru', 0, false, String(err.message || err), 'marktguru');
         } catch {}
       });
     res.json({ success: true, started: true });
@@ -54,18 +55,10 @@ router.post('/scrape/marktguru', async (req, res) => {
       return res.status(409).json({ error: 'Scrape läuft bereits', progress: current });
     }
     console.log('📡 Marktguru scrape requested via API');
-    // Run in background — response returns immediately
-    scrapeAllMarktguruStores()
-      .then(results => {
-        // Persist to history DB for each store
-        for (const [store, offers] of Object.entries(results)) {
-          const { lastInsertRowid } = offersHistoryRouter.saveScrapeRecord(store, offers.length, true, null, 'marktguru');
-          if (offers.length > 0) {
-            offersHistoryRouter.saveOffers(lastInsertRowid, store, offers, 'marktguru');
-          }
-        }
-        const total = Object.values(results).reduce((s, a) => s + a.length, 0);
-        console.log(`✅ Marktguru-Scrape persisted: ${Object.keys(results).length} stores, ${total} offers`);
+    // Phase A: derselbe API-Pfad wie /scrape — hält die Route aus Kompatibilität am Leben.
+    scrapeAndPersist('marktguru')
+      .then(({ stores, offers, durationMs }) => {
+        console.log(`✅ Marktguru-Scrape persisted: ${stores} Ketten, ${offers} offers, ${(durationMs / 1000).toFixed(1)} s`);
       })
       .catch(err => {
         console.error('Background marktguru scrape error:', err);

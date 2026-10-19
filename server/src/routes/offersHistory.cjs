@@ -44,7 +44,16 @@ const priceHistoryColumns = [
   "ALTER TABLE offer_history ADD COLUMN is_lowest_price INTEGER DEFAULT 0",
   "ALTER TABLE offer_history ADD COLUMN lowest_price_date TEXT",
   "ALTER TABLE offer_history ADD COLUMN is_highest_price INTEGER DEFAULT 0",
-  "ALTER TABLE offer_history ADD COLUMN highest_price_date TEXT"
+  "ALTER TABLE offer_history ADD COLUMN highest_price_date TEXT",
+  // Angebots-Rework 2026-10-19: Marktguru/Kaufda-Felder (alle additiv, alte Zeilen bleiben gültig)
+  "ALTER TABLE offer_history ADD COLUMN brand TEXT",
+  "ALTER TABLE offer_history ADD COLUMN valid_from TEXT",
+  "ALTER TABLE offer_history ADD COLUMN valid_to TEXT",
+  "ALTER TABLE offer_history ADD COLUMN discount_percent REAL",
+  "ALTER TABLE offer_history ADD COLUMN old_price_source TEXT",
+  "ALTER TABLE offer_history ADD COLUMN unit_price REAL",
+  "ALTER TABLE offer_history ADD COLUMN unit TEXT",
+  "ALTER TABLE offer_scrape_records ADD COLUMN duration_ms INTEGER"
 ];
 
 for (const col of priceHistoryColumns) {
@@ -56,6 +65,9 @@ try { db.exec("CREATE INDEX IF NOT EXISTS idx_offer_history_product ON offer_his
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_offer_history_store ON offer_history(store)"); } catch(e) {}
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_offer_history_price ON offer_history(price)"); } catch(e) {}
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_marktguru_id ON offer_history(offer_id) WHERE offer_id IS NOT NULL"); } catch(e) {}
+// Für den Historien-Fallback (letzter Preis je Store+Produkt) und price-chart-Abfragen
+try { db.exec("CREATE INDEX IF NOT EXISTS idx_offer_history_store_product ON offer_history(store, product_name)"); } catch(e) {}
+try { db.exec("CREATE INDEX IF NOT EXISTS idx_offer_history_scraped ON offer_history(store, scraped_at)"); } catch(e) {}
 
 // GET /api/offers/overview
 router.get('/overview', (req, res) => {
@@ -387,35 +399,96 @@ router.get('/all', (req, res) => {
 module.exports = router;
 
 // Helper functions for use by scraper
-module.exports.saveScrapeRecord = (store, offerCount, success, error, source = 'direct') => {
+module.exports.saveScrapeRecord = (store, offerCount, success, error, source = 'direct', durationMs = null) => {
   const scrapedAt = new Date().toISOString();
   const stmt = db.prepare(`
-    INSERT INTO offer_scrape_records (scraped_at, store, offer_count, success, error, source)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO offer_scrape_records (scraped_at, store, offer_count, success, error, source, duration_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  return stmt.run(scrapedAt, store, offerCount, success ? 1 : 0, error || null, source);
+  return stmt.run(scrapedAt, store, offerCount, success ? 1 : 0, error || null, source, durationMs);
 };
 
+/**
+ * Schreibt einen kompletten Scrape-Durchlauf eines Stores in die Historie.
+ * Neue Felder (brand, valid_from/to, discount_percent, old_price_source, unit_price, unit)
+ * sind optional — alte Aufrufer funktionieren unverändert.
+ */
 module.exports.saveOffers = (scrapeId, store, offers, source = 'direct') => {
   const scrapedAt = new Date().toISOString();
   const stmt = db.prepare(`
-    INSERT INTO offer_history (scrape_id, store, product_name, price, url, scraped_at, original_price, source, offer_id, source_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO offer_history
+      (scrape_id, store, product_name, price, url, scraped_at, original_price, source, offer_id, source_url,
+       brand, valid_from, valid_to, discount_percent, old_price_source, unit_price, unit)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertMany = db.transaction((items) => {
     for (const o of items) {
       stmt.run(
-        scrapeId, store, o.name, o.price, o.url || null, scrapedAt, 
+        scrapeId, store, o.name, o.price, o.url || null, scrapedAt,
         o.original_price || null, source,
         o.offer_id || null,
-        o.source_url || null
+        o.source_url || null,
+        o.brand || null,
+        o.valid_from || null,
+        o.valid_to || null,
+        typeof o.discount_percent === 'number' ? o.discount_percent : null,
+        o.old_price_source || null,
+        typeof o.unit_price === 'number' ? o.unit_price : null,
+        o.unit || null
       );
     }
   });
   insertMany(offers);
-  
+
   // Update price history flags for all products just inserted
   updatePriceHistoryFlags(db, store, scrapedAt);
-  
+
   return offers.length;
 };
+
+/**
+ * Letzter bekannter Preis je Produkt eines Stores (für den `old_price`-Fallback).
+ * Läuft VOR dem Einfügen der neuen Runde → liefert also den Stand von vorher.
+ * @returns {Map<string, {price:number, scrapedAt:string}>}
+ *          Schlüssel = normalisierter Produktname (lowercase, Whitespace zusammengezogen)
+ */
+module.exports.getLatestPrices = (store) => {
+  const rows = db.prepare(`
+    SELECT LOWER(h.product_name) AS key, h.price, h.scraped_at
+    FROM offer_history h
+    JOIN (
+      SELECT LOWER(product_name) AS k, MAX(scraped_at) AS max_at
+      FROM offer_history
+      WHERE store = ? AND price > 0
+      GROUP BY LOWER(product_name)
+    ) latest ON latest.k = LOWER(h.product_name) AND latest.max_at = h.scraped_at
+    WHERE h.store = ? AND h.price > 0
+  `).all(store, store);
+
+  const map = new Map();
+  for (const r of rows) {
+    const key = String(r.key || '').replace(/\s+/g, ' ').trim();
+    if (key) map.set(key, { price: r.price, scrapedAt: r.scraped_at });
+  }
+  return map;
+};
+
+/** Kurzstatistik je Store über den jüngsten Durchlauf — für Verifikation/Report. */
+module.exports.getStoreSummary = () => {
+  return db.prepare(`
+    SELECT store,
+           COUNT(*) AS rows_total,
+           SUM(CASE WHEN original_price IS NOT NULL THEN 1 ELSE 0 END) AS with_old_price,
+           SUM(CASE WHEN discount_percent IS NOT NULL THEN 1 ELSE 0 END) AS with_discount,
+           SUM(CASE WHEN brand IS NOT NULL THEN 1 ELSE 0 END) AS with_brand,
+           SUM(CASE WHEN valid_to IS NOT NULL THEN 1 ELSE 0 END) AS with_validity,
+           MAX(scraped_at) AS last_seen
+    FROM offer_history
+    GROUP BY store
+    ORDER BY rows_total DESC
+  `).all();
+};
+
+/** Datenbank-Handle für Aufrufer, die eigene Abfragen brauchen (z. B. Verifikationsskripte). */
+module.exports.getDb = () => db;
+module.exports.dbPath = path.join(__dirname, '..', 'data', 'rezeptbuch.db');

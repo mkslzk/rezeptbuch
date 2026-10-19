@@ -3,6 +3,7 @@ const { chromium, firefox } = require('playwright');
 const { createWorker } = require('tesseract.js');
 const fs = require('fs');
 const path = require('path');
+const marktguruApi = require('./marktguruApi.cjs');
 
 // Load PLZ and EDEKA market ID from offers-config.json at runtime
 function getConfig() {
@@ -78,6 +79,42 @@ const MARKTGURU_STORE_URLS = {
   'opti-megastore': { name: 'Opti Megastore', url: 'https://www.marktguru.de/r/opti-megastore' },
   'moebel-inhofer': { name: 'Möbel Inhofer', url: 'https://www.marktguru.de/r/moebel-inhofer' },
 };
+
+// ============================================================
+// API-PIPELINE (Phase A, 2026-10-19): Marktguru-JSON statt Browser
+// ============================================================
+// Anzeigenamen für Ketten, die nur als Marktguru-`uniqueName` existieren
+const API_STORE_NAMES = {
+  'aldi-sued': 'ALDI SÜD',
+  'aldi-nord': 'ALDI NORD',
+  'edeka': 'EDEKA',
+  'netto-marken-discount': 'Netto Marken-Discount',
+  'netto-supermarkt': 'Netto (rot)',
+  'marktkauf': 'Marktkauf',
+  'famila': 'famila',
+  'combi': 'Combi',
+  'v-markt': 'V-Markt',
+  'globus': 'Globus',
+  'tegut': 'tegut',
+  'e-center': 'E-Center',
+  'metro': 'METRO',
+  'denns-biomarkt': 'denns BioMarkt',
+  'rossmann': 'Rossmann',
+  'dm': 'dm-drogerie markt',
+  'mueller': 'Müller',
+};
+
+// Ketten für den API-Sweep, falls offers-config.json nichts vorgibt (Lebensmittel-Fokus)
+const DEFAULT_API_STORES = [
+  'lidl', 'penny', 'rewe', 'kaufland', 'netto-marken-discount', 'aldi-sued', 'edeka',
+];
+
+function storeDisplayName(key) {
+  return (MARKTGURU_STORE_URLS[key] && MARKTGURU_STORE_URLS[key].name)
+    || API_STORE_NAMES[key]
+    || (STORES[key] && STORES[key].name)
+    || key;
+}
 
 // ============================================================
 // FEATURE FLAGS
@@ -1607,7 +1644,9 @@ function hydrateOffersFromHistory({ waveWindowMs = 15 * 60 * 1000 } = {}) {
     const ids = [...newestPerStore.values()];
     const rows = db.prepare(`
       SELECT h.store, h.product_name, h.price, h.url, h.original_price,
-             h.offer_id, h.source_url, h.scraped_at
+             h.offer_id, h.source_url, h.scraped_at,
+             h.brand, h.valid_from, h.valid_to, h.discount_percent, h.old_price_source,
+             h.unit_price, h.unit
       FROM offer_history h
       WHERE h.scrape_id IN (${ids.map(() => '?').join(',')})
       ORDER BY h.store, h.product_name
@@ -1626,7 +1665,15 @@ function hydrateOffersFromHistory({ waveWindowMs = 15 * 60 * 1000 } = {}) {
         url: row.url || undefined,
         offer_id: row.offer_id || null,
         source_url: row.source_url || null,
-        store: row.store
+        store: row.store,
+        brand: row.brand || null,
+        valid_from: row.valid_from || null,
+        valid_to: row.valid_to || null,
+        discount_percent: row.discount_percent ?? null,
+        old_price_source: row.old_price_source || null,
+        unit_price: row.unit_price ?? null,
+        unit: row.unit || null,
+        upcoming: row.valid_from ? Date.parse(row.valid_from) > Date.now() : false,
       });
       if (!newest || row.scraped_at > newest) newest = row.scraped_at;
     }
@@ -1643,21 +1690,172 @@ function hydrateOffersFromHistory({ waveWindowMs = 15 * 60 * 1000 } = {}) {
  * Scrape + Persistenz in EINEM Schritt — der gemeinsame Pfad für die API-Route,
  * den Auto-Scrape beim Start und alles, was später dazukommt. Verhindert, dass
  * Scrape-Ergebnisse je nach Aufrufer mal in der DB landen und mal nicht.
- * @returns {Promise<{stores:number, offers:number}>}
+ *
+ * Phase A (2026-10-19): Quelle ist die Marktguru-JSON-API (± NORMA direkt).
+ * `source` dient nur noch als Label in der Historie.
+ * @returns {Promise<{stores:number, offers:number, durationMs:number}>}
  */
-async function scrapeAndPersist(source = 'direct') {
-  const results = await scrapeAllStores();
+async function scrapeAndPersist(source = 'marktguru') {
+  const { byStore, stats, durationMs } = await scrapeAllSources(source);
   const { saveScrapeRecord, saveOffers } = require('../routes/offersHistory.cjs');
+  const dbSource = source === 'direct' ? 'marktguru' : source;
 
   let total = 0;
-  for (const [store, offers] of Object.entries(results)) {
-    const { lastInsertRowid } = saveScrapeRecord(store, offers.length, true, null, source);
+  let stores = 0;
+  for (const [store, offers] of Object.entries(byStore)) {
+    const per = stats.perStore[store] || {};
+    const record = saveScrapeRecord(store, offers.length, !per.error, per.error || null, dbSource, per.ms ?? null);
+    stores++;
     if (offers.length > 0) {
-      saveOffers(lastInsertRowid, store, offers, source);
+      saveOffers(record.lastInsertRowid, store, offers, dbSource);
       total += offers.length;
     }
   }
-  return { stores: Object.keys(results).length, offers: total };
+
+  console.log(`💾 Persistiert: ${total} Angebote aus ${stores} Ketten (${(durationMs / 1000).toFixed(1)} s)`);
+  return { stores, offers: total, durationMs };
+}
+
+// ============================================================
+// PHASE A: Sweep über die Marktguru-API + NORMA direkt
+// ============================================================
+/** Ketten für den API-Sweep (Config → Default), ohne ausgeschlossene. */
+function getApiRetailers() {
+  const live = getConfig();
+  const configured = Array.isArray(live.marktguruStores) && live.marktguruStores.length
+    ? live.marktguruStores
+    : DEFAULT_API_STORES;
+  return configured.filter((k) => !STORE_EXCLUDED(k));
+}
+
+function historyLookupFor(storeKey) {
+  try {
+    const { getLatestPrices } = require('../routes/offersHistory.cjs');
+    const map = getLatestPrices(storeKey);
+    return map instanceof Map ? map : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Wendet die Historien-Regel auch auf Nicht-API-Quellen (NORMA) an. */
+function applyHistoryFallback(offer, history) {
+  if (!history || history.size === 0) return false;
+  if (offer.original_price) return false;
+  const key = String(offer.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const prev = history.get(key);
+  if (!prev || !prev.price || !offer.price || prev.price <= offer.price) return false;
+  // Nur frische Historien-Preise (Default 35 Tage) — sonst würden Monatspreise als "alt" gelten.
+  const maxAgeDays = Number(process.env.MOCA_HISTORY_MAX_AGE_DAYS || 35);
+  const seenAt = Date.parse(prev.scrapedAt);
+  if (!Number.isFinite(seenAt) || seenAt < Date.now() - maxAgeDays * 24 * 60 * 60 * 1000) return false;
+  const pct = marktguruApi.discountPercent(offer.price, prev.price);
+  if (pct === null) return false;   // > 80 % → Datenfehler, nicht verwenden
+  offer.original_price = Math.round(prev.price * 100) / 100;
+  offer.old_price_source = 'history';
+  offer.discount_percent = pct;
+  return true;
+}
+
+/**
+ * Holt alle Angebote über die API-Pipeline (Marktguru) plus NORMA direkt.
+ * Aktualisiert cachedOffers/lastUpdated und den Progress-Status.
+ * @returns {Promise<{byStore:Object, stats:Object, durationMs:number}>}
+ */
+async function scrapeAllSources(source = 'marktguru') {
+  if (currentScrapePromise) throw new Error('Ein Scrape läuft bereits');
+
+  currentScrapePromise = (async () => {
+    const startTime = Date.now();
+    const retailers = getApiRetailers();
+    const includeNorma = !STORE_EXCLUDED('norma');
+    const totalSteps = retailers.length + (includeNorma ? 1 : 0);
+    let step = 0;
+
+    setProgress({
+      stage: 'fetching', status: 'running',
+      message: `Lade ${totalSteps} Ketten über die Marktguru-API…`,
+      progress: 0, currentStore: 0, totalStores: totalSteps, source,
+    });
+
+    const { byStore, stats } = await marktguruApi.sweep(retailers, PLZ, {
+      historyLookup: historyLookupFor,
+      onStore: (storeKey, s) => {
+        step++;
+        setProgress({
+          stage: 'fetching', status: 'running',
+          message: `${storeDisplayName(storeKey)} — ${s.live} Angebote`,
+          progress: Math.round((step / totalSteps) * 100),
+          currentStore: step, totalStores: totalSteps,
+          currentStoreName: storeDisplayName(storeKey), source,
+        });
+      },
+    });
+
+    // NORMA: Marktguru führt dort nur Non-Food-Altreffer → eigener HTML-Scraper bleibt
+    if (includeNorma) {
+      const t0 = Date.now();
+      setProgress({
+        stage: 'fetching', status: 'running',
+        message: 'NORMA — wöchentliche Angebotsseiten…',
+        progress: Math.round((step / totalSteps) * 100),
+        currentStore: step, totalStores: totalSteps,
+        currentStoreName: 'NORMA', source,
+      });
+      try {
+        const history = historyLookupFor('norma');
+        const offers = await scrapeNormaHtml('norma', STORES.norma.url);
+        let fromHistory = 0;
+        for (const o of offers) {
+          if (applyHistoryFallback(o, history)) fromHistory++;
+        }
+        byStore['norma'] = offers;
+        stats.perStore['norma'] = {
+          total: offers.length, got: offers.length, live: offers.length, expired: 0,
+          strikePrice: offers.filter((o) => o.original_price).length,
+          fromHistory, ms: Date.now() - t0, source: 'direct',
+        };
+        stats.stores++;
+        stats.total += offers.length;
+        step++;
+        console.log(`  📡 norma (direkt): ${offers.length} Angebote in ${Date.now() - t0} ms`);
+      } catch (e) {
+        stats.perStore['norma'] = { total: 0, got: 0, live: 0, expired: 0, strikePrice: 0, fromHistory: 0, error: e.message, ms: Date.now() - t0 };
+        byStore['norma'] = [];
+        console.error(`  ❌ norma: ${e.message}`);
+      }
+    }
+
+    cachedOffers = byStore;
+    lastUpdated = new Date().toISOString();
+    const durationMs = Date.now() - startTime;
+    const active = Object.values(byStore).filter((a) => a.length > 0).length;
+    const total = Object.values(byStore).reduce((s, a) => s + a.length, 0);
+
+    setProgress({
+      stage: 'done', status: 'done',
+      message: `${total} Angebote aus ${active}/${Object.keys(byStore).length} Ketten in ${(durationMs / 1000).toFixed(1)} s`,
+      progress: 100,
+      currentStore: Object.keys(byStore).length, totalStores: Object.keys(byStore).length,
+      stats: { ...stats, totalOffers: total, activeStores: active, durationS: (durationMs / 1000).toFixed(1) },
+      source,
+    });
+
+    console.log(`✅ API-Sweep: ${total} Angebote aus ${active} Ketten in ${(durationMs / 1000).toFixed(1)} s`
+      + ` (${stats.withStrikePrice} mit altem Preis, ${stats.droppedExpired} abgelaufene verworfen)`);
+
+    return { byStore, stats, durationMs };
+  })();
+
+  try {
+    return await currentScrapePromise;
+  } catch (err) {
+    currentScrapeError = err;
+    setProgress({ stage: 'error', status: 'error', message: String(err.message || err), progress: 0, source });
+    throw err;
+  } finally {
+    currentScrapePromise = null;
+  }
 }
 
 process.on('exit', async () => { 
@@ -1672,4 +1870,6 @@ process.on('exit', async () => {
 module.exports = {
   getProgress,
   hydrateOffersFromHistory, scrapeAndPersist,
+  scrapeAllSources, getApiRetailers, storeDisplayName, DEFAULT_API_STORES,
+  // Legacy (Phase C räumt die Browser-/OCR-Pfade ab):
   scrapeAllStores, scrapeAllMarktguruStores, getOffers, matchItemsToOffers, MARKTGURU_STORES };

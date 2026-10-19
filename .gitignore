@@ -74,6 +74,8 @@ server/src/data/learned-products.json
 server/src/data/llm-config.json
 server/src/data/offers-config.json
 server/src/data/user-preferences.json
+# Marktguru-API-Zugang (zur Laufzeit aus dem Seiten-HTML gezogen)
+server/src/data/mg-keys.json
 
 # Backup files
 *.bak
@@ -87,3 +89,5 @@ Thumbs.db
 
 # Scratch fuer Scraping-Recherche (API-Keys, Mitschnitte)
 .opencode-scratch/
+# DB-Backups (VACUUM INTO / cp) nie committen
+server/src/data/*.db.*

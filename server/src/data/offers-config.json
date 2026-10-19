@@ -1,31 +1,24 @@
 {
-  "plz": "",
+  "plz": "56377",
   "edekaMarketId": "071028",
   "stores": [
     "lidl",
+    "rewe",
     "kaufland",
     "netto-marken-discount",
     "penny",
-    "rewe",
-    "nahkauf",
-    "toom",
-    "hornbach",
-    "hellweg",
-    "kabs",
-    "obi"
+    "aldi-sued",
+    "edeka",
+    "norma"
   ],
   "marktguruStores": [
     "lidl",
-    "penny",
     "rewe",
     "kaufland",
     "netto-marken-discount",
-    "nahkauf",
-    "toom",
-    "hornbach",
-    "obi",
-    "hellweg",
-    "kabs"
+    "penny",
+    "aldi-sued",
+    "edeka"
   ],
   "excludedStores": []
 }
