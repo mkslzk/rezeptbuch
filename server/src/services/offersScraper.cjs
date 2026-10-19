@@ -1590,7 +1590,7 @@ function hydrateOffersFromHistory({ waveWindowMs = 15 * 60 * 1000 } = {}) {
       SELECT id, store, scraped_at
       FROM offer_scrape_records
       WHERE success = 1 AND offer_count > 0
-      ORDER BY id DESC
+      ORDER BY scraped_at DESC, id DESC
       LIMIT 500
     `).all();
 
