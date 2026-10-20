@@ -9,7 +9,16 @@
     "penny",
     "aldi-sued",
     "edeka",
-    "norma"
+    "norma",
+    "rossmann",
+    "aldi-nord",
+    "marktkauf",
+    "combi",
+    "tegut",
+    "nahkauf",
+    "denns-biomarkt",
+    "v-markt",
+    "feneberg"
   ],
   "marktguruStores": [
     "lidl",
@@ -18,7 +27,16 @@
     "netto-marken-discount",
     "penny",
     "aldi-sued",
-    "edeka"
+    "edeka",
+    "rossmann",
+    "aldi-nord",
+    "marktkauf",
+    "combi",
+    "tegut",
+    "nahkauf",
+    "denns-biomarkt",
+    "v-markt",
+    "feneberg"
   ],
   "excludedStores": []
 }
