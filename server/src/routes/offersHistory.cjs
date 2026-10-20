@@ -418,6 +418,21 @@ module.exports.saveScrapeRecord = (store, offerCount, success, error, source = '
  * Neue Felder (brand, valid_from/to, discount_percent, old_price_source, unit_price, unit)
  * sind optional — alte Aufrufer funktionieren unverändert.
  */
+// Aufbewahrung: ältere Messungen werden verworfen, damit die DB nicht unbegrenzt
+// wächst (Standard 24 Monate; mit OFFER_RETENTION_DAYS überschreibbar).
+const RETENTION_DAYS = Number(process.env.OFFER_RETENTION_DAYS || 730);
+let lastPruneMs = 0;
+
+function pruneOldHistory() {
+  if (Date.now() - lastPruneMs < 60 * 60 * 1000) return;  // höchstens 1×/Stunde
+  lastPruneMs = Date.now();
+  const cutoff = new Date(Date.now() - RETENTION_DAYS * 86400000).toISOString();
+  const res = db.prepare('DELETE FROM offer_history WHERE scraped_at < ?').run(cutoff);
+  if (res.changes > 0) {
+    console.log(`🧹 Historie: ${res.changes} Zeilen älter als ${RETENTION_DAYS} Tage entfernt`);
+  }
+}
+
 module.exports.saveOffers = (scrapeId, store, offers, source = 'direct') => {
   const scrapedAt = new Date().toISOString();
   const stmt = db.prepare(`
@@ -454,6 +469,7 @@ module.exports.saveOffers = (scrapeId, store, offers, source = 'direct') => {
 
   // Update price history flags for all products just inserted
   updatePriceHistoryFlags(db, store, scrapedAt);
+  pruneOldHistory();
 
   return offers.length;
 };

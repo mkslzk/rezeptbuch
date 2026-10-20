@@ -49,7 +49,12 @@ const RULES = [
     'handcreme', 'gesichtscreme', 'gesichtsmaske', 'make-up', 'mascara', 'lippenstift', 'nagellack',
     'haarspray', 'haargel', 'trockenshampoo',
     'zahncreme', 'deospray', 'deoroller', 'reinigungstücher', 'reinigungstuecher', 'feuchttücher',
-    'pflegedusche', 'body creme', 'bodycreme', 'lotion', 'creme', 'duschpeeling',]],
+    'pflegedusche', 'body creme', 'bodycreme', 'lotion', 'creme', 'duschpeeling',
+    'reiniger', 'wc-schaum', 'edt', 'eau de', 'parfum', 'parfüm', 'parfuem',
+    'gesichtswasser', 'abschmink', 'wattestäbchen', 'wattestaebchen', 'pflaster',
+    'desinfektion', 'hygienespray', 'raumduft', 'duftöl', 'duftoel',
+    'cream', 'serum', 'gel', 'maske', 'peeling', 'handwash', 'seifenspender',
+    'bodyspray', 'edp', 'dusche', 'after shave', 'aftershave']],
   ['nonfood', [
     'akkustaubsauger', 'staubsauger', 'kopfhörer', 'kopfhoerer', 'handy', 'smartphone', 'tablet',
     'drucker', 'tastatur', 'maus', 'monitor', 'fernseher', 'lautsprecher', 'powerbank', 'kabel',
@@ -80,7 +85,18 @@ const RULES = [
     'abgießhilfe', 'bohrer', 'antihaft', 'backform', 'kelle', 'schuessel', 'schüssel', 'deko', 'wichtel',
     'zwerg', 'gesteck', 'kranz', 'schmuck', 'sleepshirt', 'slips', 'shirt', 'router', 'wlan',
     'blumen', 'pflanze', 'alpenveilchen', 'amaryllis', 'anthurie', 'heidekraut', 'primel', 'hyazinthe',
-    'tulpen', 'narzissen', 'blumenerde', 'katzen', 'nassfutter', 'trockenfutter', 'whiskas', 'sheba',]],
+    'tulpen', 'narzissen', 'blumenerde', 'katzen', 'nassfutter', 'trockenfutter', 'whiskas', 'sheba',
+    'boxershort', 'boxershorts', 'boxer', 'unterzieher', 'unterwäsche', 'unterwaesche', 'leggings',
+    'helm', 'fahrradhelm', 'roller', 'farbroller', 'verdünner', 'verduenner', 'werkstatt',
+    'bett', 'boxspringbett', 'lattenrost', 'roboter', 'saugroboter', 'wischroboter', 'staubsauger',
+    'stift', 'gel pen', 'kugelschreiber', 'hot wheels', 'modellauto', 'aufbewahrung', 'gläser',
+    'glaeser', 'vorratsglas', 'vorratsdose', 'decke', 'plaid', 'gardine', 'duschvorhang',
+    'werkzeugkoffer', 'schraubendreher', 'bits', 'hantel', 'fitness', 'yoga', 'luftpumpe',
+    'einkaufswagen', 'chip', 'trolley', 'regal', 'regalboden', 'kommode', 'nachttisch',
+    'hoodie', 'sweatshirt', 'mantel', 'weste', 'topper', 'kaltschaum', 'babywippe',
+    'schutzgitter', 'windeleimer', 'mopp', 'geschenktüte', 'geschenktuete', 'geschenkkarte',
+    'isolierbecher', 'trinkflasche', 'brille', 'wäschewanne', 'waeschewanne', 'herbstheide',
+    'handtuchset', 'badematte', 'duschmatte', 'fußmatte', 'fussmatte',]],
   ['tiefkuehl', [
     'tiefkühl', 'tiefkuehl', 'tk-', 'gefroren', 'pizza', 'pommes', 'kroketten', 'eispizza',
     'eiscreme', 'eis am stiel', 'speiseeis', 'vanilleeis', 'schokoeis', 'fischstäbchen',
@@ -89,13 +105,16 @@ const RULES = [
   ['getraenke', [
     'wasser', 'mineralwasser', 'sprudel', 'saft', 'fruchtsaft', 'orangensaft', 'apfelsaft',
     'multivitaminsaft', 'limonade', 'limo', 'cola', 'fanta', 'sprite', 'schorle', 'bier', 'pils',
-    'weizen', 'weißbier', 'weissbier', 'wein', 'rotwein', 'weißwein', 'weisswein', 'rosé', 'rose',
+    'weizenbier', 'weissbier', 'wein', 'rotwein', 'weißwein', 'weisswein', 'rosé', 'rosewein', 'roséwein',
     'sekt', 'prosecco', 'champagner', 'schnaps', 'likör', 'likoer', 'whisky', 'vodka', 'rum',
     'gin', 'aperitif', 'energy-drink', 'energydrink', 'smoothie', 'tee', 'kaffee', 'espresso',
     'cappuccino', 'getränk', 'getraenk', 'erfrischungsgetränk', 'erfrischungsgetraenk',
     'milchshake', 'latte', 'kombucha', 'tonic', 'drink', 'smoothies',
-    'spezi', 'helles', 'pilsener', 'radler', 'beer', 'kraft-aktiv',
-    'coffee', 'pads', 'coffee pads', 'kaffeepads', 'kaffeekapseln',]],
+    'spezi', 'helles', 'pilsener', 'radler', 'kraft-aktiv',
+    'coffee', 'pads', 'coffee pads', 'kaffeepads', 'kaffeekapseln',
+    'caffè', 'caffe', 'vitaminwater', 'near water', 'bubble tea', 'eistee',
+    'kräutertee', 'kraeutertee', 'früchtetee', 'fruechtetee', 'schwarztee',
+    'kamillentee', 'pfefferminztee', 'grüntee', 'gruentee', 'rooibos',]],
   ['pflanzlich', [
     'tofu', 'tempeh', 'seitan', 'räuchertofu', 'raeuchertofu', 'sojajoghurt', 'sojajogurt',
     'plant based', 'plant-based', 'like meat', 'likemeat', 'vemondo', 'alpro', 'oatly',
@@ -114,12 +133,16 @@ const RULES = [
     'hering', 'matjes', 'makrele', ' sardinen', 'sardinen', 'muscheln', 'tintenfisch', 'krabben',
     'surimi', 'mehlwürmer', 'mehlwuermer', 'insekt', 'wildschwein', 'hirsch', 'lamm', 'kalb',
     'ente', 'gans', 'leberkäse', 'leberkaese', 'fleischsalat', 'metzgerei', 'wurstaufschnitt',
+    'rotbarsch', 'seelachs', 'kabeljau', 'zander', 'fischfilet', 'fischfilets', 'scholle',
+    'heilbutt', 'dorade', 'wolfsbarsch', 'scampi', 'jakobsmuschel', 'aal', 'rollmops',
   ]],
   ['brot-backwaren', [
     'brot', 'brote', 'brötchen', 'broetchen', 'baguette', 'toast', 'croissant', 'brezel', 'laugen',
     'bäckerei', 'baeckerei', 'kuchen', 'torte', 'waffel', 'waffeln', 'muffin', 'stollen', 'plunder',
     'hefezopf', 'zimtschnecke', 'donut', 'gebäck', 'gebaeck', 'knäckebrot', 'knaeckebrot',
     'zwieback', 'biskuit', 'nussschnecke', 'käsekuchen', 'kaesekuchen', 'streuselkuchen',
+    'rolls', 'hot dog', 'burger bun', 'buns', 'sandwich', 'wrap', 'fladenbrot', 'pita',
+    'berliner', 'krapfen', 'danish',
   ]],
   ['suesses-snacks', [
     'schokolade', 'schoko', 'praline', 'pralinen', 'bonbon', 'bonbons', 'gummibärchen',
@@ -131,7 +154,9 @@ const RULES = [
     'müsliriegel', 'muesliriegel', 'proteinriegel', 'flips', 'cracker', 'salzgebäck',
     'salzgebaeck', 'käsegebäck', 'kaesegebaeck', 'obstgummi', 'lakritzschnecke', 'zuckerwatte',
     'knoppers', 'raffaello', 'toffifee', 'duplo', 'kinder country', 'kinder pingui', 'kinder bueno', 'milka', 'ritter sport', 'lindt', 'haribo', 'katjes', 'oreo', 'pringles', 'funny-frisch', 'cantuccini', 'zimtsterne', 'dominosteine', 'maronen',
-    'crossies', 'choco crossies', 'schokoriegel', 'pralinenbox',]],
+    'crossies', 'choco crossies', 'schokoriegel', 'pralinenbox',
+    'haselnusskerne', 'nusskerne', 'kürbiskerne', 'kuerbiskerne', 'sonnenblumenkerne',
+    'halloween snacks', 'snacks',]],
   ['milch-eier', [
     'milch', 'butter', 'buttercreme', 'käse', 'kaese', 'joghurt', 'jogurt', 'quark', 'sahne',
     'creme fraiche', 'crème fraîche', 'schmand', 'kefir', 'buttermilch', 'mozzarella', 'gouda',
@@ -155,7 +180,8 @@ const RULES = [
     'reismilch', 'kokosdrink', 'agavendicksaft', 'ahornsirup', 'vanillezucker', 'speisestärke',
     'speisestaerke', 'grieß', 'griess', 'polenta', 'knödel', 'knoedel', 'spätzle', 'spaetzle',
     'noodles', 'longhetti', 'fix', 'würzmischung', 'wuerzmischung', 'tütensuppe', 'tuetensuppe', 'kuvertüre', 'kuverture', 'zitronat', 'backzutat', 'fertigteig', 'kapern', 'backoblaten', 'oblaten', 'vanilleschoten',
-    'bouillon', 'cannelloni', 'fondant', 'tortenguss', 'speisefarbe', 'marzipanrohmasse',]],
+    'bouillon', 'cannelloni', 'fondant', 'tortenguss', 'speisefarbe', 'marzipanrohmasse',
+    'würzöl', 'wuerzoel', 'pelmeni', 'nesquik',]],
   ['obst-gemuese', [
     'apfel', 'äpfel', 'aepfel', 'banane', 'bananen', 'birne', 'birnen', 'traube', 'trauben',
     'weintrauben', 'kiwi', 'orange', 'orangen', 'mandarine', 'clementine', 'zitrone', 'zitronen',
@@ -278,8 +304,17 @@ function classifyOffer(offer = {}) {
   const pathText = norm([offer.category, ...(Array.isArray(offer.categoryPaths) ? offer.categoryPaths : [])]
     .filter(Boolean).join(' '));
 
+  // Zusammengesetzte Wörter, bei denen ein generisches Keyword daneben liegt:
+  // "Weizenmehl" ist kein Weizenbier, "Eiscreme" keine Drogerie-Creme.
+  const OVERRIDES = [
+    [/weizenmehl|dinkelmehl|roggenmehl|hafermehl/, 'vorrat'],
+    [/eiscreme|speiseeis|eis am stiel|eisbecher|vanilleeis|schokoeis/, 'tiefkuehl'],
+    [/teewurst/, 'fleisch-fisch'],
+  ];
+  const override = OVERRIDES.find(([re]) => re.test(nameText));
+
   // Explizite Kaufda-Kategorie übernehmen, wenn sie sich zuordnen lässt
-  let category = pickCategory(nameText, pathText);
+  let category = override ? override[1] : pickCategory(nameText, pathText);
   if (!category) category = 'sonstiges';
 
   const diet = pickDiet(nameText, offer.brand, category);
