@@ -206,7 +206,14 @@ export default function RecipeDetailPage() {
           </div>
         )}
       </div>
-      {recipe.image_url && <img src={recipe.image_url} alt={recipe.title} className="detail-image" />}
+      {recipe.image_url && (
+        <img
+          src={recipe.image_url}
+          alt={recipe.title}
+          className="detail-image"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        />
+      )}
       <div className="detail-body">
         <h1>{recipe.title}</h1>
         {recipe.category && <span className="detail-category">{getCategoryLabel(recipe.category) || recipe.category}</span>}

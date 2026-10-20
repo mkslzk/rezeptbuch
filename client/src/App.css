@@ -635,8 +635,10 @@ a:hover {
 
 .detail-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 0.6rem;
   margin-bottom: 1.5rem;
 }
 
@@ -661,7 +663,33 @@ a:hover {
 
 .detail-actions {
   display: flex;
+  flex-wrap: wrap;          /* mobil lief die Leiste 687 px aus dem Viewport */
+  justify-content: flex-end;
   gap: 0.5rem;
+  min-width: 0;
+}
+
+.detail-actions .btn { white-space: nowrap; }
+
+@media (max-width: 640px) {
+  /* Eine Zeile, seitlich wischbar — statt vier umbrechender Reihen */
+  .detail-actions {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    width: 100%;
+    gap: 0.4rem;
+    padding-bottom: 0.15rem;
+    scrollbar-width: none;
+  }
+  .detail-actions::-webkit-scrollbar { display: none; }
+  .detail-actions > * { flex: 0 0 auto; }
+  .detail-actions .btn {
+    min-height: 40px;
+    padding: 0.45rem 0.7rem;
+    font-size: 0.84rem;
+  }
 }
 
 .detail-image {
