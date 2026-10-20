@@ -86,6 +86,12 @@ router.get('/region', (req, res) => {
 // unterschiedliche Prospekte). Danach neu scrapen, sonst bleiben alte Angebote.
 router.put('/region', (req, res) => {
   try {
+    // Mitten im Scrape würde die alte PLZ weiterlaufen und die neuen Angebote
+    // mit falscher Region persistieren — deshalb ablehnen statt mischen.
+    const running = getProgress();
+    if (running && running.status === 'running') {
+      return res.status(409).json({ error: 'Scrape läuft — bitte kurz warten' });
+    }
     const { plz } = req.body || {};
     const region = setRegionPlz(plz);
     res.json({ ...region, needsRescrape: true });
@@ -104,10 +110,16 @@ router.get('/match', (req, res) => {
     const { listId } = req.query;
     if (!listId) return res.status(400).json({ error: 'listId required' });
 
-    const items = offersHistory.getDb()
+    const db = offersHistory.getDb();
+    const id = Number(listId);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'listId muss eine positive Zahl sein' });
+
+    const list = db.prepare('SELECT id FROM shopping_lists WHERE id = ?').get(id);
+    if (!list) return res.status(404).json({ error: 'Liste nicht gefunden' });
+
+    const items = db
       .prepare('SELECT item, amount, unit, category, store, checked FROM shopping_items WHERE shopping_list_id = ? ORDER BY id')
-      .all(listId);
-    if (items.length === 0) return res.json({ matches: [], items: 0 });
+      .all(id);
 
     const matches = matchItemsToOffers(items);
     res.json({ matches, items: items.length });
@@ -136,7 +148,9 @@ router.post('/match', (req, res) => {
 router.post('/price-summary', (req, res) => {
   try {
     const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
-    const days = Math.min(Math.max(Number(req.body?.days) || 365, 7), 1095);
+    // Deckungsgleich mit der Retention in offersHistory (730 Tage) — längere
+    // Zeiträume liefern sonst stillschweigend dieselben Daten.
+    const days = Math.min(Math.max(Number(req.body?.days) || 365, 7), 730);
 
     const items = rawItems
       .map((it) => ({ name: String(it?.name || '').trim(), brand: it?.brand ? String(it.brand).trim() : null }))
@@ -171,8 +185,16 @@ router.post('/price-summary', (req, res) => {
 
       for (const r of byName.get(it.name) || []) {
         // Marke muss passen, wenn beide Seiten eine haben
-        const rowBrand = r.brand ? String(r.brand).toLowerCase() : null;
-        if (brandNorm && rowBrand && !(rowBrand.includes(brandNorm) || brandNorm.includes(rowBrand))) continue;
+        const rowBrand = r.brand ? String(r.brand).toLowerCase().trim() : null;
+        // Marke muss übereinstimmen; beidseitiges includes ließ kurze Marken
+        // ("dm", "h") praktisch alles treffen und verfälschte min/max.
+        if (brandNorm) {
+          if (!rowBrand) continue;                       // ohne Marke nicht zuordenbar
+          const same = rowBrand === brandNorm
+            || rowBrand.split(/[^a-zäöüß0-9]+/).includes(brandNorm)
+            || brandNorm.split(/[^a-zäöüß0-9]+/).includes(rowBrand);
+          if (!same) continue;
+        }
 
         acc.count++;
         acc.sum += r.price;

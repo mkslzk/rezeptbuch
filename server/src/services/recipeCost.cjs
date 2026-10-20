@@ -26,7 +26,9 @@ function weekCostForIngredients(ingredients = [], { minScore = 0.6 } = {}) {
   }
 
   const usable = ingredients.filter((ing) => ing && String(ing.item || '').trim());
-  const matched = matchItems(usable, flat, { minScore, limit: 1 });
+  // Bis zu drei Treffer holen und den **günstigsten** nehmen — der beste
+  // Namensscore ist nicht automatisch das beste Angebot.
+  const matched = matchItems(usable, flat, { minScore, limit: 3 });
 
   const items = [];
   let sum = 0;
@@ -34,12 +36,14 @@ function weekCostForIngredients(ingredients = [], { minScore = 0.6 } = {}) {
   let priceableCount = 0;
 
   for (const m of matched) {
-    const offer = m.offers[0] || null;
+    const offer = m.offers.length
+      ? m.offers.reduce((a, b) => (Number(b.price) < Number(a.price) ? b : a))
+      : null;
     const priceable = isPriceable(m.item, m.unit);
     if (priceable) priceableCount++;
-    if (offer) {
+    if (offer && priceable) {
       matchedCount++;
-      if (priceable) sum += Number(offer.price) || 0;
+      sum += Number(offer.price) || 0;
     }
     items.push({
       item: m.item,

@@ -45,3 +45,17 @@ test('Stammbildung', () => {
   assert.strictEqual(stem('Eier'), 'Eier');
   assert.deepStrictEqual(tokens('500 g Kartoffeln (mehlig)'), ['kartoffeln']);
 });
+
+test('bekannte Falsch-Komposita werden ausgeschlossen', () => {
+  // aus dem Code-Review: Kopfwort stimmt, Produkt ist ein anderes
+  assert.strictEqual(ingredientScore('Reis', 'Milchreis'), 0);
+  assert.strictEqual(ingredientScore('Milch', 'Buttermilch'), 0);
+  assert.strictEqual(ingredientScore('Butter', 'Erdnussbutter'), 0);
+});
+
+test('Komposita mit Obst/Gemüse im Namen bleiben gültig', () => {
+  // Blockliste darf nicht auf Substrings prüfen ('wein' in Weintrauben)
+  assert.ok(ingredientScore('Trauben', 'Weintrauben') >= 0.8);
+  assert.ok(ingredientScore('Salat', 'Eisbergsalat') >= 0.8);
+  assert.ok(ingredientScore('Milch', 'Vollmilch') >= 0.8);
+});

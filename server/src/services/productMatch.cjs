@@ -28,6 +28,15 @@ const FLAVOR_BLOCK = [
   'gewürz', 'gewuerz', 'kräuter', 'kraeuter', 'scharf', 'mild', 'rauch',
 ];
 
+// Komposita, bei denen das Kopfwort stimmt, das Produkt aber ein anderes ist:
+// "Milch" ≠ "Buttermilch", "Reis" ≠ "Milchreis", "Butter" ≠ "Erdnussbutter".
+const AMBIGUOUS_COMPOUNDS = new Set([
+  'milchreis', 'buttermilch', 'sauermilch', 'dickmilch', 'kokosmilch', 'sojamilch',
+  'mandelmilch', 'reismilch', 'hafermilch', 'butterschmalz', 'erdnussbutter',
+  'kakaobutter', 'buttercreme', 'sahnesosse', 'sahnesoße', 'sahnefix',
+  'eierlikoer', 'eierlikör', 'reispudding', 'milchkaffee',
+]);
+
 const STOPWORDS = new Set([
   'frisch', 'frische', 'frischer', 'frisches', 'gehackt', 'gehackte', 'gehackter',
   'gekocht', 'gekochte', 'gekochter', 'gemahlen', 'gemahlene', 'gemahlener',
@@ -77,11 +86,28 @@ function ingredientScore(ingredientName, offerName) {
 
   const ingNorm = normalize(ingredientName);
   const offNorm = normalize(offerName);
+  const offTokenSet = new Set(off);
+
+  // Wortgenau prüfen: sonst blockt 'wein' die Weintrauben und 'eis' den Eisbergsalat.
+  const blocked = (rawTerm) => {
+    // Begriffe normalisieren ("spezialität" → "spezialitat", "früchte" → "fruchte"),
+    // sonst laufen Umlaute an den Tokens vorbei.
+    const term = normalize(rawTerm);
+    if (!term) return false;
+    if (term.includes(' ')) return offNorm.includes(term) && !ingNorm.includes(term);
+    return offTokenSet.has(term) && !ing.includes(term);
+  };
   for (const type of PRODUCT_TYPE_BLOCK) {
-    if (offNorm.includes(type) && !ingNorm.includes(type)) return 0;
+    if (blocked(type)) return 0;
   }
-  for (const flavor of FLAVOR_BLOCK) {
-    if (offNorm.includes(flavor) && !ingNorm.includes(flavor)) return 0;
+  for (const rawFlavor of FLAVOR_BLOCK) {
+    const flavor = normalize(rawFlavor);
+    if (!flavor) continue;
+    // Sorten sind Modifikatoren und stehen im Kompositum vorn ("Gewürzquark",
+    // "Früchte-Quark") — deshalb Präfix-Treffer auf Tokens.
+    const asPrefix = offTokenSet.has(flavor)
+      || off.some((t) => t.length >= flavor.length + 3 && t.startsWith(flavor));
+    if (asPrefix && !ing.some((t) => t === flavor || t.startsWith(flavor))) return 0;
   }
 
   const offStems = off.map(stem);
@@ -94,7 +120,8 @@ function ingredientScore(ingredientName, offerName) {
       const ow = off[i];
       const os = offStems[i];
       if (ow === word || os === st) return 1;
-      const compound = (ow.length >= 4 && word.length >= 4 && (ow.endsWith(word) || os.endsWith(st)));
+      const compound = (ow.length >= 4 && word.length >= 4 && (ow.endsWith(word) || os.endsWith(st)))
+        && !(AMBIGUOUS_COMPOUNDS.has(ow) && ow !== word);
       if (compound) { best = Math.max(best, 0.85); continue; }
       // Kurze Wörter: "Ei" → "Eier", "Ei" → "Freilandeier"
       if (word.length <= 3) {

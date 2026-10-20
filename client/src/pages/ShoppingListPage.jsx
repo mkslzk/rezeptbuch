@@ -47,44 +47,11 @@ const CATEGORY_LABELS = {
 
 const SESSION_KEY = 'moca-last-plan';
 
-// ============================================================
-// FUZZY MATCHING
-// ============================================================
-const STOPWORDS = new Set(['der', 'die', 'das', 'ein', 'eine', 'und', 'oder', 'mit', 'von', 'für', 'zu', 'am', 'im', 'an', 'auf', 'bis', 'nach', 'über', 'aus', 'bei', 'ist', 'sind', 'war', 'waren']);
-
 function isEigenmarkenDeal(store, productName, price, eigenmarkenPrices) {
   if (!productName || !price) return false;
   const key = store + ':' + productName.toLowerCase();
   const refPrice = eigenmarkenPrices[key];
   return !!(refPrice && price < refPrice);
-}
-
-function getEigenmarkenSavings(store, productName, price, eigenmarkenPrices) {
-  if (!productName || !price) return null;
-  const key = store + ':' + productName.toLowerCase();
-  const refPrice = eigenmarkenPrices[key];
-  if (!refPrice || price >= refPrice) return null;
-  return ((refPrice - price) / refPrice * 100).toFixed(0);
-}
-
-function matchItemToOffers(itemName, offers) {
-  if (!offers) return [];
-  const matches = [];
-  for (const [store, storeOffers] of Object.entries(offers)) {
-    for (const offer of storeOffers) {
-      const score = fuzzyMatch(itemName, offer.name);
-      if (score > 0.3) {
-        matches.push({
-          store,
-          name: offer.name,
-          price: offer.price,
-          matchScore: score
-        });
-      }
-    }
-  }
-  matches.sort((a, b) => b.matchScore - a.matchScore || a.price - b.price);
-  return matches.slice(0, 3);
 }
 
 function getKW(date) {
@@ -161,7 +128,8 @@ export default function ShoppingListPage() {
     setOffersLoading(false);
   }
 
-  const openItemsKey = items.filter(i => !i.checked).map(i => `${i.id}:${i.item}:${i.amount || ''}:${i.unit || ''}`).join('|');
+  // ohne id: Umsortieren soll keinen identischen Request auslösen
+  const openItemsKey = items.filter(i => !i.checked).map(i => `${i.item}:${i.amount || ''}:${i.unit || ''}`).join('|');
 
   useEffect(() => {
     const open = items.filter(i => !i.checked).map(i => ({ item: i.item, amount: i.amount, unit: i.unit, category: i.category }));

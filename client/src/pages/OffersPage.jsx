@@ -70,7 +70,9 @@ function oldPriceLabel(source) {
 }
 
 function favKey(name, brand) {
-  return `${String(name || '').trim()}||${String(brand || '').trim()}`;
+  // Server vergleicht mit COLLATE NOCASE — der Client muss genauso normalisieren,
+  // sonst zeigt das Herz „nicht gemerkt" und der POST läuft ins Leere.
+  return `${String(name || '').trim().toLowerCase()}||${String(brand || '').trim().toLowerCase()}`;
 }
 
 // Mini-Verlauf der Wochen-Tiefstpreise (SVG, kein Chart-Paket nötig)
@@ -152,6 +154,7 @@ export default function OffersPage() {
       if (!res.ok) throw new Error('Angebote konnten nicht geladen werden');
       const json = await res.json();
       setData({ offers: json.offers || {}, lastUpdated: json.lastUpdated || null });
+      setVisibleCount(PAGE_SIZE);   // nach einem Re-Scrape wieder von vorn
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -306,6 +309,7 @@ export default function OffersPage() {
       const k = favKey(o.name, o.brand);
       if (!seen.has(k)) { seen.add(k); uniq.push({ name: o.name, brand: o.brand || null }); }
     }
+    const controller = new AbortController();
     if (priceTimer.current) clearTimeout(priceTimer.current);
     priceTimer.current = setTimeout(async () => {
       try {
@@ -313,16 +317,24 @@ export default function OffersPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ items: uniq.slice(0, 200), days: 365 }),
+          signal: controller.signal,
         });
         const json = await res.json();
         if (json.items) setPriceStats((prev) => ({ ...prev, ...json.items }));
-      } catch { /* Verlauf ist Beiwerk, Karten bleiben nutzbar */ }
+      } catch (e) {
+        // Abort ist kein Fehler; alles andere bleibt Beiwerk, Karten funktionieren weiter
+        if (e?.name !== 'AbortError') { /* still */ }
+      }
     }, 350);
-    return () => { if (priceTimer.current) clearTimeout(priceTimer.current); };
+    return () => {
+      if (priceTimer.current) clearTimeout(priceTimer.current);
+      controller.abort();          // verhindert, dass eine alte Antwort neuere Daten überschreibt
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rendered]);
 
-  const activeFilterCount = activeStores.length + activeCats.length + (diet !== 'all' ? 1 : 0) + (onlyFood ? 0 : 1) + (onlyFavorites ? 1 : 0);
+  // Zählt genau das, was auch als Tag in der Trefferzeile steht
+  const activeFilterCount = activeStores.length + activeCats.length + (diet !== 'all' ? 1 : 0) + (onlyFavorites ? 1 : 0);
 
   function toggleIn(listName, key) {
     const current = filters[listName];
@@ -348,6 +360,10 @@ export default function OffersPage() {
         body: JSON.stringify({ plz }),
       });
       const json = await res.json();
+      if (res.status === 409) {
+        setRegionMsg('Es läuft gerade ein Scrape — bitte kurz warten und erneut übernehmen.');
+        return;
+      }
       if (!res.ok) throw new Error(json.error || 'Konnte PLZ nicht speichern');
       setRegion({ plz: json.plz });
       setRegionMsg('Gespeichert — Angebote werden neu eingelesen …');

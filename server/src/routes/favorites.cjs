@@ -12,6 +12,16 @@ const path = require('path');
 
 const router = express.Router();
 const db = new Database(path.join(__dirname, '..', 'data', 'rezeptbuch.db'));
+// Zweite Verbindung zur selben Datei: WAL + busy_timeout verhindern SQLITE_BUSY
+// beim parallelen Scrape-Schreibzugriff.
+db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
+
+/** IDs kommen aus der URL — nur positive Ganzzahlen durchlassen. */
+function parseId(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS favorite_products (
@@ -63,26 +73,33 @@ router.post('/', (req, res) => {
 
 router.patch('/:id', (req, res) => {
   try {
-    const id = Number(req.params.id);
+    const id = parseId(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Ungültige ID' });
     const target = req.body?.target_price === null || req.body?.target_price === ''
       ? null
       : Number(req.body?.target_price);
     if (target !== null && (!Number.isFinite(target) || target <= 0)) {
       return res.status(400).json({ error: 'target_price must be a positive number' });
     }
-    db.prepare('UPDATE favorite_products SET target_price = ? WHERE id = ?').run(target, id);
+    const info = db.prepare('UPDATE favorite_products SET target_price = ? WHERE id = ?').run(target, id);
+    if (info.changes === 0) return res.status(404).json({ error: 'Nicht gefunden' });
     res.json({ success: true, favorites: listFavorites() });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('PATCH /favorites/:id:', e.message);
+    res.status(500).json({ error: 'Interner Fehler' });
   }
 });
 
 router.delete('/:id', (req, res) => {
   try {
-    db.prepare('DELETE FROM favorite_products WHERE id = ?').run(Number(req.params.id));
+    const id = parseId(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Ungültige ID' });
+    const info = db.prepare('DELETE FROM favorite_products WHERE id = ?').run(id);
+    if (info.changes === 0) return res.status(404).json({ error: 'Nicht gefunden' });
     res.json({ success: true, favorites: listFavorites() });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('DELETE /favorites/:id:', e.message);
+    res.status(500).json({ error: 'Interner Fehler' });
   }
 });
 

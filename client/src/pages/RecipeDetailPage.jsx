@@ -145,7 +145,7 @@ export default function RecipeDetailPage() {
       .then((j) => { if (alive && j) setWeekCost(j); })
       .catch(() => {});
     return () => { alive = false; };
-  }, [id, recipe?.id]);
+  }, [id]);
 
   if (!recipe) return <div className="loading">Lädt...</div>;
   let ingredients = [], steps = [], tags = [];
