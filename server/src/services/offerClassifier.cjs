@@ -89,8 +89,8 @@ const RULES = [
     'spezi', 'helles', 'pilsener', 'radler', 'beer', 'kraft-aktiv',]],
   ['pflanzlich', [
     'tofu', 'tempeh', 'seitan', 'räuchertofu', 'raeuchertofu', 'sojajoghurt', 'sojajogurt',
-    'vegan', 'pflanzlich', 'plant based', 'plant-based', 'vegane', 'veggie', 'like meat',
-    'likemeat', 'vemondo', 'alpro', 'oatly', 'vegane wurst', 'vegane schnitzel', 'veganer aufschnitt',
+    'plant based', 'plant-based', 'like meat', 'likemeat', 'vemondo', 'alpro', 'oatly',
+    'vegane wurst', 'vegane schnitzel', 'veganer aufschnitt',
     'kokosjoghurt', 'nussdrink', 'hafercreme', 'veganer käse', 'veganer kaese', 'vegane butter',
     'haferdrink', 'hafermilch', 'mandelmilch', 'reismilch', 'sojadrink', 'kokosdrink', 'dinkeldrink',
   ]],
@@ -143,7 +143,7 @@ const RULES = [
     'chiasamen', 'proteinpulver', 'haferdrink', 'hafermilch', 'mandelmilch', 'sojadrink',
     'reismilch', 'kokosdrink', 'agavendicksaft', 'ahornsirup', 'vanillezucker', 'speisestärke',
     'speisestaerke', 'grieß', 'griess', 'polenta', 'knödel', 'knoedel', 'spätzle', 'spaetzle',
-    'noodles', 'longhetti', 'fix', 'würzmischung', 'wuerzmischung', 'tütensuppe', 'tuetensuppe', 'kuvertüre', 'kuverture', 'zitronat', 'backzutat', 'fertigteig',]],
+    'noodles', 'longhetti', 'fix', 'würzmischung', 'wuerzmischung', 'tütensuppe', 'tuetensuppe', 'kuvertüre', 'kuverture', 'zitronat', 'backzutat', 'fertigteig', 'kapern', 'backoblaten', 'oblaten', 'vanilleschoten',]],
   ['obst-gemuese', [
     'apfel', 'äpfel', 'aepfel', 'banane', 'bananen', 'birne', 'birnen', 'traube', 'trauben',
     'weintrauben', 'kiwi', 'orange', 'orangen', 'mandarine', 'clementine', 'zitrone', 'zitronen',
@@ -264,13 +264,11 @@ function classifyOffer(offer = {}) {
   let category = pickCategory(nameText, pathText);
   if (!category) category = 'sonstiges';
 
-  // Pflanzliche Alternativen gewinnen gegen "Käse alternative"-Formulierungen
   const diet = pickDiet(nameText, offer.brand, category);
-  if (diet === 'vegan' && category !== 'nonfood' && category !== 'drogerie-haushalt') {
-    // Tofu/Seitan & Co. sauber als pflanzlich führen, Getränke/Eis bleiben ihre Warengruppe
-    if (category === 'sonstiges' || category === 'milch-eier' || category === 'fleisch-fisch') {
-      category = 'pflanzlich';
-    }
+  // Vegan deklarierte Ersatzprodukte (Wurst, Käse, Nuggets …) gehören zu den pflanzlichen Alternativen.
+  // Vegan deklarierte Grundnahrungsmittel (Kapern, Reis, Backoblaten) behalten ihre Warengruppe.
+  if (diet === 'vegan' && (category === 'milch-eier' || category === 'fleisch-fisch')) {
+    category = 'pflanzlich';
   }
 
   return {

@@ -199,34 +199,47 @@ function getCachedAnalysis(code) {
  * Holt `ingredients_analysis_tags` für einen Code (nur wenn nicht gecacht).
  * @returns {Promise<{code:string, vegan:boolean, vegetarian:boolean, nonVegan:boolean}|null>}
  */
-async function fetchAnalysis(code) {
+async function fetchAnalysis(code, { retries = 2 } = {}) {
   const cached = getCachedAnalysis(code);
   if (cached) return cached;
 
   const url = `${API_BASE}/${encodeURIComponent(code)}.json?fields=code,product_name,ingredients_analysis_tags,nova_group`;
-  try {
-    const res = await fetch(url, { headers: { 'User-Agent': UA } });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const p = data.product || {};
-    const tags = Array.isArray(p.ingredients_analysis_tags) ? p.ingredients_analysis_tags : [];
-    const row = {
-      code,
-      product_name: p.product_name || null,
-      vegan: tags.includes('en:vegan') ? 1 : 0,
-      vegetarian: tags.includes('en:vegetarian') ? 1 : 0,
-      non_vegan: tags.includes('en:non-vegan') ? 1 : 0,
-      nova_group: p.nova_group ?? null,
-      fetched_at: new Date().toISOString(),
-    };
-    const db = ensureAnalysisTable();
-    db.prepare(`INSERT OR REPLACE INTO off_analysis
-      (code, product_name, vegan, vegetarian, non_vegan, nova_group, fetched_at)
-      VALUES (@code, @product_name, @vegan, @vegetarian, @non_vegan, @nova_group, @fetched_at)`).run(row);
-    return row;
-  } catch {
-    return null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': UA } });
+      // OFF drosselt anonyme Bursts mit 429 — wir warten und versuchen es erneut
+      if (res.status === 429) {
+        const retryAfter = Number(res.headers.get('retry-after')) || 8;
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, retryAfter * 1000));
+          continue;
+        }
+        return { rateLimited: true };
+      }
+      if (!res.ok) return null;
+      const data = await res.json();
+      const p = data.product || {};
+      const tags = Array.isArray(p.ingredients_analysis_tags) ? p.ingredients_analysis_tags : [];
+      const row = {
+        code,
+        product_name: p.product_name || null,
+        vegan: tags.includes('en:vegan') ? 1 : 0,
+        vegetarian: tags.includes('en:vegetarian') ? 1 : 0,
+        non_vegan: tags.includes('en:non-vegan') ? 1 : 0,
+        nova_group: p.nova_group ?? null,
+        fetched_at: new Date().toISOString(),
+      };
+      const db = ensureAnalysisTable();
+      db.prepare(`INSERT OR REPLACE INTO off_analysis
+        (code, product_name, vegan, vegetarian, non_vegan, nova_group, fetched_at)
+        VALUES (@code, @product_name, @vegan, @vegetarian, @non_vegan, @nova_group, @fetched_at)`).run(row);
+      return row;
+    } catch {
+      if (attempt === retries) return null;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
   }
+  return null;
 }
 
 /** Ernährungseinstufung aus gecachten OFF-Tags (ohne Netzwerk). */

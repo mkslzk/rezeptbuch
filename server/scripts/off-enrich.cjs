@@ -17,7 +17,7 @@ const Database = require('better-sqlite3');
 const off = require('../src/services/offLookup.cjs');
 
 const DB_PATH = path.join(__dirname, '..', 'src', 'data', 'rezeptbuch.db');
-const DELAY_MS = 700;
+const DELAY_MS = 1500;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
@@ -43,20 +43,41 @@ async function main() {
   let vegan = 0;
   let vegetarian = 0;
   let failed = 0;
+  let done = 0;
 
-  for (const code of codes) {
-    const row = await off.fetchAnalysis(code);
-    if (!row) { failed++; }
-    else {
-      fetched++;
-      if (row.vegan) vegan++;
-      else if (row.vegetarian && !row.non_vegan) vegetarian++;
+  // OFF drosselt anonyme Bursts hart (429) → sequenziell, mit Pausen und Abbruch bei Dauer-Drosselung
+  const CONCURRENCY = Number(process.env.OFF_CONCURRENCY || 1);
+  let rateLimitedStreak = 0;
+
+  async function worker(queue) {
+    while (queue.length) {
+      if (rateLimitedStreak >= 3) return;
+      const code = queue.shift();
+      const row = await off.fetchAnalysis(code);
+      if (row && row.rateLimited) {
+        rateLimitedStreak++;
+        console.log(`  ⏳ Rate-Limit (${rateLimitedStreak}/3) — warte 30 s`);
+        await sleep(30000);
+        queue.unshift(code);
+        continue;
+      }
+      rateLimitedStreak = 0;
+      if (!row) { failed++; }
+      else {
+        fetched++;
+        if (row.vegan) vegan++;
+        else if (row.vegetarian && !row.non_vegan) vegetarian++;
+      }
+      done++;
+      if (done % 20 === 0) {
+        console.log(`  … ${done}/${codes.length} (vegan ${vegan}, vegetarisch ${vegetarian}, Fehler ${failed})`);
+      }
+      await sleep(DELAY_MS);
     }
-    if ((fetched + failed) % 25 === 0) {
-      console.log(`  … ${fetched + failed}/${codes.length} (vegan ${vegan}, vegetarisch ${vegetarian}, Fehler ${failed})`);
-    }
-    await sleep(DELAY_MS);
   }
+
+  const queue = [...codes];
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, () => worker(queue)));
 
   // Ernährungslabels in der Historie aktualisieren (nur wo OFF eine klare Aussage hat)
   const update = db.prepare(`
