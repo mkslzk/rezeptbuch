@@ -171,10 +171,14 @@ function normalizeOffer(raw, { storeKey, plz } = {}) {
   const validTo = raw.validTo || null;
   const upcoming = validFrom ? Date.parse(validFrom) > Date.now() : false;
 
+  // Marktguru nutzt "thisisnobrand123" als Platzhalter, wenn es keine Marke gibt.
+  const rawBrand = (raw.brand && raw.brand.name) || null;
+  const brand = rawBrand && !/^thisisnobrand\d*$/i.test(rawBrand.trim()) ? rawBrand : null;
+
   return {
     store: storeKey,
     name: (raw.product && raw.product.name) || raw.description || 'Unbekannt',
-    brand: (raw.brand && raw.brand.name) || null,
+    brand,
     price,
     original_price: oldPrice,
     old_price_source: oldPrice ? 'api' : null,

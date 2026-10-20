@@ -726,6 +726,15 @@ async function scrapeNormaHtml(storeKey, landingUrl) {
         continue;
       }
       const offers = parseNormaPage(result.value, storeKey);
+      // Gültigkeitsbeginn steckt in der URL: .../ab-montag,-26.10.26/...
+      const weekStart = parseNormaWeekStart(pageUrl);
+      if (weekStart) {
+        for (const o of offers) {
+          o.valid_from = weekStart;      // ISO-UTC (lokale Mitternacht, DST-korrekt)
+          o.valid_to = null;             // NORMA nennt kein Ende → ehrlich leer
+          o.upcoming = Date.parse(o.valid_from) > Date.now();
+        }
+      }
       console.log(`  📋 ${pageUrl.split('/').slice(-2, -1)[0]}: ${offers.length} offers`);
       allOffers.push(...offers);
     }
@@ -745,6 +754,18 @@ async function scrapeNormaHtml(storeKey, landingUrl) {
     console.warn(`  ⚠️ NORMA scraper: ${e.message}`);
     return [];
   }
+}
+
+/**
+ * Liest den Gültigkeitsbeginn aus einer NORMA-Wochen-URL.
+ * Beispiel: ".../ab-montag,-26.10.26/..." → ISO-Zeitstempel (lokale Mitternacht).
+ */
+function parseNormaWeekStart(url) {
+  const m = String(url || '').match(/ab-[a-z]+,-(\d{2})\.(\d{2})\.(\d{2})/i);
+  if (!m) return null;
+  const [, dd, mm, yy] = m;
+  const d = new Date(Number(`20${yy}`), Number(mm) - 1, Number(dd), 0, 0, 0);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 // Parse a single NORMA weekly page HTML into offers.
@@ -1857,6 +1878,8 @@ function mergeKaufdaOffers(byStore, kaufdaByStore, stats) {
         target.original_price = k.original_price;
         target.discount_percent = pct;
         target.old_price_source = k.old_price_source || 'kaufda';
+        // Kategorie/Beschreibung nur ergänzen, nie überschreiben (Marktguru liefert keine)
+        if (!target.category && k.category) target.category = k.category;
         storeEnriched++;
         if (isExact) storeExact++; else storeFuzzy++;
       }
