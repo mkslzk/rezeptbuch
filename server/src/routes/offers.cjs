@@ -1,5 +1,5 @@
 const express = require('express');
-const { getProgress, getOffers, matchItemsToOffers, scrapeAndPersist } = require('../services/offersScraper.cjs');
+const { getProgress, getOffers, matchItemsToOffers, scrapeAndPersist, getRegion, setRegionPlz } = require('../services/offersScraper.cjs');
 const offersHistory = require('./offersHistory.cjs');
 
 const router = express.Router();
@@ -70,6 +70,29 @@ router.post('/scrape/marktguru', async (req, res) => {
   } catch (err) {
     console.error('POST /api/offers/scrape/marktguru error:', err);
     res.status(500).json({ error: 'Marktguru scrape failed: ' + err.message });
+  }
+});
+
+// GET /api/offers/region — für welche PLZ gelten die Angebote?
+router.get('/region', (req, res) => {
+  try {
+    res.json(getRegion());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/offers/region  { plz }  — Region wechseln (Marktguru liefert je PLZ
+// unterschiedliche Prospekte). Danach neu scrapen, sonst bleiben alte Angebote.
+router.put('/region', (req, res) => {
+  try {
+    const { plz } = req.body || {};
+    const region = setRegionPlz(plz);
+    res.json({ ...region, needsRescrape: true });
+  } catch (err) {
+    if (err.code === 'INVALID_PLZ') return res.status(400).json({ error: err.message });
+    console.error('PUT /api/offers/region error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -17,7 +17,29 @@ function getConfig() {
   return { plz: '56377', edekaMarketId: '' };
 }
 const config = getConfig();
-const PLZ = config.plz || '56377';
+// Region ist zur Laufzeit änderbar (PUT /api/offers/region) — Marktguru
+// beantwortet die PLZ unterschiedlich, deshalb nicht als Konstante einfrieren.
+let PLZ = config.plz || '56377';
+const CONFIG_PATH = path.join(__dirname, '../data/offers-config.json');
+
+function getRegion() {
+  return { plz: PLZ };
+}
+
+/** Setzt die PLZ und schreibt sie in offers-config.json (überlebt Neustarts). */
+function setRegionPlz(plz) {
+  const value = String(plz || '').trim();
+  if (!/^\d{5}$/.test(value)) {
+    const err = new Error('PLZ muss fünfstellig sein');
+    err.code = 'INVALID_PLZ';
+    throw err;
+  }
+  PLZ = value;
+  const cfg = getConfig();
+  cfg.plz = value;
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n');
+  return { plz: PLZ };
+}
 // NORMA bleibt als einzige Direktquelle (Marktguru/Kaufda führen NORMA nicht strukturiert)
 const NORMA_URL = 'https://www.norma-online.de/de/angebote/';
 
@@ -840,4 +862,5 @@ module.exports = {
   scrapeAllSources, getApiRetailers, getKaufdaStores, storeDisplayName,
   DEFAULT_API_STORES, DEFAULT_KAUFDA_STORES, mergeKaufdaOffers,
   getOffers, matchItemsToOffers, fuzzyMatch,
+  getRegion, setRegionPlz,
 };

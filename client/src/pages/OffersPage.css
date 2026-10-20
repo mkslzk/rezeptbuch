@@ -756,3 +756,79 @@
     box-shadow: 0 16px 60px rgba(60, 40, 20, 0.3);
   }
 }
+
+/* ---- Region (PLZ) ---- */
+.offers-stats-region {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-light);
+}
+
+.offers-sheet-hint {
+  margin: 0 0 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-text-light);
+}
+
+.offers-region-label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.offers-region-active {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  color: var(--color-green);
+  font-weight: 600;
+}
+
+.offers-region {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.offers-region input {
+  width: 7.5rem;
+  min-height: 44px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fffdf8;
+  font-size: 1rem;               /* 16px: kein iOS-Zoom */
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  color: var(--color-text);
+}
+
+.offers-region input:focus-visible {
+  outline: 2px solid var(--color-green);
+  outline-offset: 1px;
+}
+
+.offers-region-save {
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-green);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.offers-region-save:disabled {
+  background: #d8cfc2;
+  color: #7a6a5a;
+  cursor: default;
+}
+
+.offers-region-msg {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-light);
+}

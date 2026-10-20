@@ -125,6 +125,11 @@ export default function OffersPage() {
   const [progress, setProgress] = useState(null);
   const [favorites, setFavorites] = useState([]);
   const [priceStats, setPriceStats] = useState({});
+  // Region: Marktguru liefert je PLZ unterschiedliche Prospekte
+  const [region, setRegion] = useState({ plz: '' });
+  const [regionInput, setRegionInput] = useState('');
+  const [regionSaving, setRegionSaving] = useState(false);
+  const [regionMsg, setRegionMsg] = useState('');
   const dialogRef = useRef(null);
   const priceTimer = useRef(null);
 
@@ -324,6 +329,37 @@ export default function OffersPage() {
     update({ [listName]: current.includes(key) ? current.filter((k) => k !== key) : [...current, key] });
   }
 
+  useEffect(() => {
+    fetch('/recipe/api/offers/region')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.plz) { setRegion(j); setRegionInput(j.plz); } })
+      .catch(() => {});
+  }, []);
+
+  async function saveRegion() {
+    const plz = regionInput.trim();
+    if (!/^\d{5}$/.test(plz)) { setRegionMsg('Bitte eine fünfstellige PLZ eingeben.'); return; }
+    setRegionSaving(true);
+    setRegionMsg('');
+    try {
+      const res = await fetch('/recipe/api/offers/region', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plz }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Konnte PLZ nicht speichern');
+      setRegion({ plz: json.plz });
+      setRegionMsg('Gespeichert — Angebote werden neu eingelesen …');
+      await startScrape();
+      setRegionMsg(`Angebote gelten jetzt für PLZ ${json.plz}.`);
+    } catch (e) {
+      setRegionMsg(e.message);
+    } finally {
+      setRegionSaving(false);
+    }
+  }
+
   async function startScrape() {
     try {
       setScraping(true);
@@ -374,6 +410,12 @@ export default function OffersPage() {
             <strong>{totals.count.toLocaleString('de-DE')}</strong> Angebote
             <span className="offers-dot">·</span>
             Stand {lastUpdatedText}
+            {region.plz && (
+              <>
+                <span className="offers-dot">·</span>
+                <span className="offers-stats-region" title="Postleitzahl, für die die Angebote gelten">PLZ {region.plz}</span>
+              </>
+            )}
             {totals.vegan > 0 && (
               <>
                 <span className="offers-dot">·</span>
@@ -564,6 +606,38 @@ export default function OffersPage() {
                 />
                 ♥ nur Merkliste ({favorites.length})
               </label>
+            </section>
+
+            <section className="offers-sheet-section">
+              <h3>Region</h3>
+              <p className="offers-sheet-hint">
+                Angebote gelten für diese Postleitzahl — je nach Region unterscheiden sich die Prospekte.
+              </p>
+              <label className="offers-region-label" htmlFor="offers-region-input">Postleitzahl</label>
+              <div className="offers-region">
+                <input
+                  id="offers-region-input"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={5}
+                  value={regionInput}
+                  onChange={(e) => setRegionInput(e.target.value.replace(/\D/g, ''))}
+                  aria-label="Postleitzahl"
+                  placeholder="56377"
+                />
+                <button
+                  type="button"
+                  className="offers-region-save"
+                  onClick={saveRegion}
+                  disabled={regionSaving || regionInput === region.plz}
+                >
+                  {regionSaving ? 'Lädt …' : 'Übernehmen'}
+                </button>
+              </div>
+              {region.plz && regionInput === region.plz && (
+                <p className="offers-region-active">Aktiv: PLZ {region.plz}</p>
+              )}
+              {regionMsg && <p className="offers-region-msg" role="status">{regionMsg}</p>}
             </section>
           </div>
 
