@@ -26,6 +26,7 @@ const CATEGORIES = {
   'drogerie-haushalt': 'Drogerie & Haushalt',
   'nonfood': 'Non-Food',
   'sonstiges': 'Sonstiges',
+  'aktion': 'Rabatt-Aktionen',
 };
 
 const FOOD_CATEGORIES = new Set([
@@ -47,7 +48,8 @@ const RULES = [
     'lufterfrischer', 'kerzenwachs', 'alkoholfrei', 'sonnencreme', 'sonnenmilch', 'bodylotion',
     'handcreme', 'gesichtscreme', 'gesichtsmaske', 'make-up', 'mascara', 'lippenstift', 'nagellack',
     'haarspray', 'haargel', 'trockenshampoo',
-    'zahncreme', 'deospray', 'deoroller', 'reinigungstücher', 'reinigungstuecher', 'feuchttücher',]],
+    'zahncreme', 'deospray', 'deoroller', 'reinigungstücher', 'reinigungstuecher', 'feuchttücher',
+    'pflegedusche', 'body creme', 'bodycreme', 'lotion', 'creme', 'duschpeeling',]],
   ['nonfood', [
     'akkustaubsauger', 'staubsauger', 'kopfhörer', 'kopfhoerer', 'handy', 'smartphone', 'tablet',
     'drucker', 'tastatur', 'maus', 'monitor', 'fernseher', 'lautsprecher', 'powerbank', 'kabel',
@@ -72,7 +74,13 @@ const RULES = [
     'katzenstreu', 'hundefutter', 'katzenfutter', 'vogelfutter', 'wildvogelfutter', 'meisenknödel',
     'meisenknoedel', 'grillanzünder', 'grillanzuender', 'adventskalender-auto', 'gartenmöbel',
     'gartenmoebel', 'sonnenschirm', 'pool', 'luftmatratze', 'zelt', 'schlafsack',
-    'orchidee', 'weihnachtskarten', 'weihnachtsmann', 'figur', 'schlafanzug', 'pyjama', 'nasenspreizer', 'lichterkette', 'pyramide', 'led', 'silikon', 'buch', 'bildband',]],
+    'orchidee', 'weihnachtskarten', 'weihnachtsmann', 'figur', 'schlafanzug', 'pyjama', 'nasenspreizer', 'lichterkette', 'pyramide', 'led', 'silikon', 'buch', 'bildband',
+    'lego', 'bausteine', 'bauset', 'eisenbahn', 'stofftier', 'kuscheltier', 'puzzle', 'brettspiel',
+    'backpapier', 'backblech', 'steckerleiste', 'klebeband', 'alleskleber', 'putzkelle', 'abgiesshilfe',
+    'abgießhilfe', 'bohrer', 'antihaft', 'backform', 'kelle', 'schuessel', 'schüssel', 'deko', 'wichtel',
+    'zwerg', 'gesteck', 'kranz', 'schmuck', 'sleepshirt', 'slips', 'shirt', 'router', 'wlan',
+    'blumen', 'pflanze', 'alpenveilchen', 'amaryllis', 'anthurie', 'heidekraut', 'primel', 'hyazinthe',
+    'tulpen', 'narzissen', 'blumenerde', 'katzen', 'nassfutter', 'trockenfutter', 'whiskas', 'sheba',]],
   ['tiefkuehl', [
     'tiefkühl', 'tiefkuehl', 'tk-', 'gefroren', 'pizza', 'pommes', 'kroketten', 'eispizza',
     'eiscreme', 'eis am stiel', 'speiseeis', 'vanilleeis', 'schokoeis', 'fischstäbchen',
@@ -86,7 +94,8 @@ const RULES = [
     'gin', 'aperitif', 'energy-drink', 'energydrink', 'smoothie', 'tee', 'kaffee', 'espresso',
     'cappuccino', 'getränk', 'getraenk', 'erfrischungsgetränk', 'erfrischungsgetraenk',
     'milchshake', 'latte', 'kombucha', 'tonic', 'drink', 'smoothies',
-    'spezi', 'helles', 'pilsener', 'radler', 'beer', 'kraft-aktiv',]],
+    'spezi', 'helles', 'pilsener', 'radler', 'beer', 'kraft-aktiv',
+    'coffee', 'pads', 'coffee pads', 'kaffeepads', 'kaffeekapseln',]],
   ['pflanzlich', [
     'tofu', 'tempeh', 'seitan', 'räuchertofu', 'raeuchertofu', 'sojajoghurt', 'sojajogurt',
     'plant based', 'plant-based', 'like meat', 'likemeat', 'vemondo', 'alpro', 'oatly',
@@ -121,7 +130,8 @@ const RULES = [
     'weingummi', 'eis am stiel', 'schokokuss', 'schokoküsse', 'schokokuesse', 'riegel',
     'müsliriegel', 'muesliriegel', 'proteinriegel', 'flips', 'cracker', 'salzgebäck',
     'salzgebaeck', 'käsegebäck', 'kaesegebaeck', 'obstgummi', 'lakritzschnecke', 'zuckerwatte',
-    'knoppers', 'raffaello', 'toffifee', 'duplo', 'kinder country', 'kinder pingui', 'kinder bueno', 'milka', 'ritter sport', 'lindt', 'haribo', 'katjes', 'oreo', 'pringles', 'funny-frisch', 'cantuccini', 'zimtsterne', 'dominosteine', 'maronen',]],
+    'knoppers', 'raffaello', 'toffifee', 'duplo', 'kinder country', 'kinder pingui', 'kinder bueno', 'milka', 'ritter sport', 'lindt', 'haribo', 'katjes', 'oreo', 'pringles', 'funny-frisch', 'cantuccini', 'zimtsterne', 'dominosteine', 'maronen',
+    'crossies', 'choco crossies', 'schokoriegel', 'pralinenbox',]],
   ['milch-eier', [
     'milch', 'butter', 'buttercreme', 'käse', 'kaese', 'joghurt', 'jogurt', 'quark', 'sahne',
     'creme fraiche', 'crème fraîche', 'schmand', 'kefir', 'buttermilch', 'mozzarella', 'gouda',
@@ -129,7 +139,8 @@ const RULES = [
     'huettenkaese', 'frischkäse', 'frischkaese', 'parmesan', 'ricotta', 'mascarpone', 'skyr',
     'ei', 'eier', 'eigelb', 'eiklar', 'freilandeier', 'bodeneier', 'weideneier', 'rahm',
     'schlagsahne', 'sauerrahm', 'crème', 'pudding', 'milchreis', 'griechischer joghurt',
-    'actimel', 'fruchtzwerge', 'joghurt-drink',]],
+    'actimel', 'fruchtzwerge', 'joghurt-drink',
+    'sanella', 'margarine', 'streichfett', 'kaesescheiben', 'käsescheiben',]],
   ['vorrat', [
     'nudeln', 'nudel', 'pasta', 'spaghetti', 'spagetti', 'penne', 'fusilli', 'reis', 'basmati',
     'jasminreis', 'couscous', 'bulgur', 'quinoa', 'mehl', 'zucker', 'salz', 'pfeffer', 'öl', 'oel',
@@ -143,7 +154,8 @@ const RULES = [
     'chiasamen', 'proteinpulver', 'haferdrink', 'hafermilch', 'mandelmilch', 'sojadrink',
     'reismilch', 'kokosdrink', 'agavendicksaft', 'ahornsirup', 'vanillezucker', 'speisestärke',
     'speisestaerke', 'grieß', 'griess', 'polenta', 'knödel', 'knoedel', 'spätzle', 'spaetzle',
-    'noodles', 'longhetti', 'fix', 'würzmischung', 'wuerzmischung', 'tütensuppe', 'tuetensuppe', 'kuvertüre', 'kuverture', 'zitronat', 'backzutat', 'fertigteig', 'kapern', 'backoblaten', 'oblaten', 'vanilleschoten',]],
+    'noodles', 'longhetti', 'fix', 'würzmischung', 'wuerzmischung', 'tütensuppe', 'tuetensuppe', 'kuvertüre', 'kuverture', 'zitronat', 'backzutat', 'fertigteig', 'kapern', 'backoblaten', 'oblaten', 'vanilleschoten',
+    'bouillon', 'cannelloni', 'fondant', 'tortenguss', 'speisefarbe', 'marzipanrohmasse',]],
   ['obst-gemuese', [
     'apfel', 'äpfel', 'aepfel', 'banane', 'bananen', 'birne', 'birnen', 'traube', 'trauben',
     'weintrauben', 'kiwi', 'orange', 'orangen', 'mandarine', 'clementine', 'zitrone', 'zitronen',
@@ -158,7 +170,8 @@ const RULES = [
     'aubergine', 'kürbis', 'kuerbis', 'ingwer', 'knoblauch', 'kräuter', 'kraeuter', 'basilikum',
     'petersilie', 'schnittlauch', 'dill', 'minze', 'obst', 'gemüse', 'gemuese', 'frischobst',
     'salatgurke', 'spitzkohl', 'staudensellerie', 'mangold', 'artischocke', 'spargel',
-    'kaki', 'maronenpilz', 'physalis',]],
+    'kaki', 'maronenpilz', 'physalis',
+    'chicoree', 'chicorée', 'feldsalat',]],
 ];
 
 /** Normalisiert Text für den Vergleich (klein, ohne Sonderzeichen, einfache Umlaute doppelt). */
@@ -225,7 +238,12 @@ const MEAT_FISH = [
   'wild', 'leberkäse', 'leberkaese', 'fleischsalat', 'metzgerei', 'gelatine',
 ];
 
+// Werbezeilen wie "20 % Rabatt", "2 Euro Artikel", "30 % Exklusive Rabatte" sind keine Produkte.
+// Bewusst streng: "Milch 3,5 %" darf nicht als Aktion gelten.
+const PROMO_RE = /^\s*\d+([.,]\d+)?\s*%|rabatt|exklusive|\d+\s*(€|euro)\s*artikel/i;
+
 function pickCategory(text, pathText) {
+  if (PROMO_RE.test(text)) return 'aktion';
   // 1) Kaufda-Kategoriepfad ist die verlässlichste Quelle
   if (pathText) {
     for (const [cat, hints] of PATH_HINTS) {

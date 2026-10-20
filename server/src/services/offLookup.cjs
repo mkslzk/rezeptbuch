@@ -30,26 +30,39 @@ const UNIT_RE = /\b\d+([.,]\d+)?\s*(g|kg|ml|l|cl|stk|stück|stueck|x|%)\b/gi;
 
 // OFF-Kategorie (englisch) → unsere Warengruppe
 const CATEGORY_MAP = [
-  ['tiefkuehl', ['frozen', 'ice-cream', 'ice cream', 'frozen-desserts', 'pizzas']],
+  ['tiefkuehl', ['frozen', 'ice-cream', 'ice cream', 'frozen-desserts', 'pizzas',
+    'tiefkühl', 'tiefkuehl', 'eiscreme', 'speiseeis', 'pizza', 'pommes']],
   ['getraenke', ['beverages', 'drinks', 'waters', 'sodas', 'beers', 'wines', 'spirits', 'juices',
-    'coffees', 'teas', 'plant-based-milk-alternatives', 'milks']],
+    'coffees', 'teas', 'plant-based-milk-alternatives', 'milks',
+    'getränk', 'getraenk', 'wasser', 'saft', 'limonade', 'bier', 'wein', 'kaffee', 'tee', 'sprudel']],
   ['pflanzlich', ['vegan-foods', 'plant-based-foods', 'meat-analogues', 'tofu', 'tempeh', 'seitan',
-    'plant-based-beverages', 'vegetarian-foods']],
+    'plant-based-beverages', 'vegetarian-foods',
+    'fleischersatz', 'vegane lebensmittel', 'vegetarische lebensmittel', 'pflanzliche']],
   ['fleisch-fisch', ['meats', 'fish', 'seafood', 'poultry', 'sausages', 'charcuterie', 'ham',
-    'prepared-meats', 'fishes', 'smoked-fishes']],
+    'prepared-meats', 'fishes', 'smoked-fishes',
+    'fleisch', 'wurst', 'fisch', 'geflügel', 'gefluegel', 'schinken']],
   ['milch-eier', ['dairies', 'cheeses', 'yogurts', 'milks', 'butters', 'creams', 'eggs',
-    'fermented-milk-products', 'fresh-cheeses', 'ripened-cheeses']],
-  ['brot-backwaren', ['breads', 'bakery', 'pastries', 'cakes', 'viennoiseries', 'biscuits?']],
+    'fermented-milk-products', 'fresh-cheeses', 'ripened-cheeses',
+    'milchprodukt', 'käse', 'kaese', 'joghurt', 'eier', 'quark', 'sahne', 'molkerei']],
+  ['brot-backwaren', ['breads', 'bakery', 'pastries', 'cakes', 'viennoiseries', 'biscuits?',
+    'brot', 'backwaren', 'brötchen', 'broetchen', 'kuchen', 'gebäck', 'gebaeck']],
   ['suesses-snacks', ['snacks', 'sweet-snacks', 'chocolates', 'candies', 'confectioneries', 'biscuits',
-    'crisps', 'salty-snacks', 'nuts', 'dried-fruits']],
+    'crisps', 'salty-snacks', 'nuts', 'dried-fruits',
+    'süßwaren', 'suesswaren', 'schokolade', 'keks', 'bonbon', 'salziges']],
   ['vorrat', ['cereals', 'pastas', 'rices', 'oils', 'vinegars', 'sauces', 'condiments', 'canned',
-    'legumes', 'flours', 'sugars', 'honeys', 'jams', 'spices', 'soups', 'prepared-meals']],
+    'legumes', 'flours', 'sugars', 'honeys', 'jams', 'spices', 'soups', 'prepared-meals',
+    'konserven', 'nudeln', 'reis', 'öl', 'oel', 'gewürz', 'gewuerz', 'fertiggericht', 'suppe', 'sauce', 'müsli', 'muesli']],
   ['obst-gemuese', ['fruits', 'vegetables', 'fresh-fruits', 'fresh-vegetables', 'salads',
-    'fruits-and-vegetables-based-foods']],
+    'fruits-and-vegetables-based-foods',
+    'obst', 'gemüse', 'gemuese']],
   ['drogerie-haushalt', ['hygiene', 'cleaning', 'cosmetics', 'body-care', 'hair-care', 'oral-care',
-    'household-products', 'laundry', 'soaps']],
+    'household-products', 'laundry', 'soaps',
+    'drogerie', 'haushalt', 'körperpflege', 'koerperpflege', 'waschmittel', 'nahrungsergänzung',
+    'nahrungsergaenzung', 'kosmetik', 'putzmittel', 'hygieneartikel']],
   ['nonfood', ['pet-foods', 'non-food-products', 'kitchen-utensils', 'furniture', 'electronics',
-    'clothing', 'toys', 'garden']],
+    'clothing', 'toys', 'garden',
+    'tiernahrung', 'tierfutter', 'möbel', 'moebel', 'elektronik', 'kleidung', 'spielwaren',
+    'büro', 'buero', 'gartenartikel', 'haustier']],
 ];
 
 let offDb = null;
@@ -103,7 +116,7 @@ function findMatch(name, brand, { minScore = 0.5 } = {}) {
   let rows = [];
   try {
     rows = db.prepare(`
-      SELECT p.code, p.product_name_de, p.product_name, p.brands, p.categories_en
+      SELECT p.code, p.product_name_de, p.product_name, p.brands, p.categories_en, p.categories
       FROM products_fts f JOIN products p ON p.rowid = f.rowid
       WHERE products_fts MATCH ?
       LIMIT 25
@@ -140,7 +153,7 @@ function findMatch(name, brand, { minScore = 0.5 } = {}) {
         code: r.code,
         productName: pname,
         brands: r.brands || null,
-        categoriesEn: r.categories_en || null,
+        categoriesEn: [r.categories_en, r.categories].filter(Boolean).join(', ') || null,
         score: Math.round(score * 100) / 100,
         overlap: inter,
       };
@@ -152,13 +165,20 @@ function findMatch(name, brand, { minScore = 0.5 } = {}) {
   return result;
 }
 
-/** Leitet aus OFF-Kategorien (englisch) unsere Warengruppe ab. */
+/** Wortgrenzen-Test für kurze Hinweise — sonst trifft "wein" auch "Weintrauben". */
+function hintMatches(text, hint) {
+  if (hint.length > 4) return text.includes(hint);
+  const re = new RegExp(`(^|[^a-zäöüß0-9])${hint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-zäöüß0-9]|$)`);
+  return re.test(text);
+}
+
+/** Leitet aus OFF-Kategorien (englisch + deutsch) unsere Warengruppe ab. */
 function categoryFromOffCategories(categoriesEn) {
   const text = String(categoriesEn || '').toLowerCase();
   if (!text) return null;
   for (const [category, hints] of CATEGORY_MAP) {
     for (const hint of hints) {
-      if (text.includes(hint)) return category;
+      if (hintMatches(text, hint)) return category;
     }
   }
   return null;

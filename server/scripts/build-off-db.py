@@ -95,6 +95,15 @@ def is_german(raw, p):
     return 'germany' in low or 'deutschland' in low
 
 
+def categories_en_of(p):
+    """Der Dump führt `categories_en` nicht mehr — aus den englischen Tags rekonstruieren."""
+    tags = p.get('categories_tags') or []
+    names = [t[3:] for t in tags if isinstance(t, str) and t.startswith('en:')]
+    if names:
+        return ', '.join(names)
+    return p.get('categories_en') or None
+
+
 def row_from(p):
     tags = p.get('ingredients_analysis_tags') or []
     if not isinstance(tags, list):
@@ -106,7 +115,7 @@ def row_from(p):
         p.get('brands') or None,
         (p.get('brands') or '').lower().replace(',', ' ').replace('  ', ' ').strip() or None,
         p.get('categories') or None,
-        p.get('categories_en') or None,
+        categories_en_of(p),
         p.get('purchase_places') or None,
         p.get('countries') or None,
         p.get('quantity') or None,
