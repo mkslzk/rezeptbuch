@@ -5228,3 +5228,59 @@ a:hover {
   .week-cost-list li { grid-template-columns: minmax(0, 1fr) auto; }
   .week-cost-offer { grid-column: 1 / -1; white-space: normal; }
 }
+
+/* ---- Einkaufsliste: Summe, Angebots-Pills, Tap-Flächen ---- */
+.shopping-sum {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #fffdf8, #f9f2e6);
+}
+
+.shopping-sum-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-light);
+}
+
+.shopping-sum-value {
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-green);
+}
+
+.offer-chip-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.45rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: #fffdf8;
+  font-size: 0.78rem;
+}
+
+.offer-chip-inline.is-selected {
+  border-color: var(--color-green);
+  background: #eef5e8;
+  box-shadow: inset 0 0 0 1px var(--color-green);
+}
+
+@media (max-width: 720px) {
+  /* Papierkorb & Angebots-Pills fingerfreundlich */
+  .shopping-item .btn-delete {
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .offer-chip-inline { padding: 0.32rem 0.55rem; }
+}

@@ -3,20 +3,33 @@ import { Link, useSearchParams } from 'react-router-dom';
 import Modal from '../components/Modal.jsx';
 import ProductSearch from '../components/ProductSearch.jsx';
 
+// Deutsche Preisformatierung: 6,97 € statt 6.97€
+function fmtPrice(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '';
+  return `${n.toFixed(2).replace('.', ',')} €`;
+}
+
 const STORE_LABELS = {
-  aldi: '🅰️ ALDI',
+  'aldi-sued': '🅰️ ALDI SÜD',
+  'aldi-nord': '🅰️ ALDI NORD',
   lidl: '🟠 LIDL',
-  netto: '🟡 Netto',
+  'netto-marken-discount': '🟡 Netto',
   penny: '🟢 PENNY',
   norma: '🔵 NORMA',
   rewe: '🔴 REWE',
   edeka: '🟤 EDEKA',
-  real: '🟣 real',
   kaufland: '🟠 Kaufland',
-  metro: '⚫ METRO'
+  globus: '🔴 Globus',
+  rossmann: '🟤 ROSSMANN',
 };
 
-const STORE_ORDER = ['rewe', 'edeka', 'aldi', 'lidl', 'netto', 'penny', 'kaufland', 'metro', 'real', ''];
+// Nur Ketten, die aktuell wirklich Angebote liefern — der Laden-Dropdown
+// hatte vorher Altlasten (aldi, netto, real, metro) doppelt drin.
+const STORE_ORDER = [
+  'rewe', 'edeka', 'aldi-sued', 'aldi-nord', 'lidl',
+  'netto-marken-discount', 'penny', 'kaufland', 'globus', 'norma', 'rossmann', '',
+];
 
 const CATEGORY_ORDER = ['produce', 'meat', 'dairy', 'plant', 'bakery', 'pantry', 'frozen', 'beverages', 'snacks', 'sonstiges'];
 const CATEGORY_LABELS = {
@@ -38,58 +51,6 @@ const SESSION_KEY = 'moca-last-plan';
 // FUZZY MATCHING
 // ============================================================
 const STOPWORDS = new Set(['der', 'die', 'das', 'ein', 'eine', 'und', 'oder', 'mit', 'von', 'für', 'zu', 'am', 'im', 'an', 'auf', 'bis', 'nach', 'über', 'aus', 'bei', 'ist', 'sind', 'war', 'waren']);
-
-function normalizeText(str) {
-  if (!str) return '';
-  return str
-    .toLowerCase()
-    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
-    .replace(/\bkg\b/g, 'kilogramm').replace(/\bl\b/g, 'liter').replace(/\bstück\b/g, 'stueck')
-    .replace(/\bpkg\b/g, 'packung').replace(/\bg\b/g, 'gramm')
-    .replace(/\d+/g, '#')
-    .split(/\s+/).filter(w => w.length > 2 && !STOPWORDS.has(w)).join(' ');
-}
-
-function levenshteinSimilarity(a, b) {
-  if (!a || !b) return 0;
-  if (a === b) return 1;
-  const lenA = a.length, lenB = b.length;
-  if (lenA === 0 || lenB === 0) return 0;
-  const matrix = Array(lenA + 1).fill(null).map(() => Array(lenB + 1).fill(0));
-  for (let i = 0; i <= lenA; i++) matrix[i][0] = i;
-  for (let j = 0; j <= lenB; j++) matrix[0][j] = j;
-  for (let i = 1; i <= lenA; i++) {
-    for (let j = 1; j <= lenB; j++) {
-      const cost = a[i-1] === b[j-1] ? 0 : 1;
-      matrix[i][j] = Math.min(matrix[i-1][j] + 1, matrix[i][j-1] + 1, matrix[i-1][j-1] + cost);
-    }
-  }
-  return 1 - matrix[lenA][lenB] / Math.max(lenA, lenB);
-}
-
-function fuzzyMatch(itemName, offerName) {
-  const normItem = normalizeText(itemName);
-  const normOffer = normalizeText(offerName);
-  if (!normItem || !normOffer) return 0;
-  
-  const itemWords = normItem.split(/\s+/).filter(w => w.length > 2);
-  const offerWords = normOffer.split(/\s+/).filter(w => w.length > 2);
-  if (itemWords.length === 0 || offerWords.length === 0) return 0;
-  
-  let score = 0;
-  for (const iw of itemWords) {
-    let best = 0;
-    for (const ow of offerWords) {
-      if (ow.includes(iw) || iw.includes(ow)) {
-        best = Math.max(best, 2);
-      } else {
-        best = Math.max(best, levenshteinSimilarity(iw, ow));
-      }
-    }
-    score += best;
-  }
-  return score / itemWords.length;
-}
 
 function isEigenmarkenDeal(store, productName, price, eigenmarkenPrices) {
   if (!productName || !price) return false;
@@ -153,6 +114,9 @@ export default function ShoppingListPage() {
   const [offersData, setOffersData] = useState(null);
   const [eigenmarkenPrices, setEigenmarkenPrices] = useState({});
   const [offersLoading, setOffersLoading] = useState(false);
+  // Angebots-Treffer kommen vom Server (productMatch.cjs) — die frühere
+  // Browser-Kopie traf zu viel („Milch" → „Milchreis").
+  const [offerMatches, setOfferMatches] = useState({});
   const [showOffers, setShowOffers] = useState(true);
   const [scrapeStatus, setScrapeStatus] = useState(null);
   const [scrapeLoading, setScrapeLoading] = useState(false);
@@ -196,6 +160,30 @@ export default function ShoppingListPage() {
     }
     setOffersLoading(false);
   }
+
+  const openItemsKey = items.filter(i => !i.checked).map(i => `${i.id}:${i.item}:${i.amount || ''}:${i.unit || ''}`).join('|');
+
+  useEffect(() => {
+    const open = items.filter(i => !i.checked).map(i => ({ item: i.item, amount: i.amount, unit: i.unit, category: i.category }));
+    if (open.length === 0) { setOfferMatches({}); return; }
+    let alive = true;
+    const timer = setTimeout(() => {
+      fetch('/recipe/api/offers/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: open }),
+      })
+        .then(r => (r.ok ? r.json() : { matches: [] }))
+        .then(d => {
+          if (!alive) return;
+          const map = {};
+          for (const m of d.matches || []) map[m.item] = m.bestOffers || [];
+          setOfferMatches(map);
+        })
+        .catch(() => {});
+    }, 300);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [openItemsKey]);
 
   async function handleRefreshOffers() {
     setScrapeLoading(true);
@@ -490,9 +478,7 @@ export default function ShoppingListPage() {
     .filter(i => !i.checked)
     .map(item => ({
       ...item,
-      matchedOffers: offersData?.offers 
-        ? matchItemToOffers(item.item, offersData.offers)
-        : []
+      matchedOffers: offerMatches[item.item] || []
     }));
 
   // Calculate total price from all matched offers
@@ -564,7 +550,7 @@ export default function ShoppingListPage() {
           <div className="item-right">
             {bestOffer ? (
               <span className="item-price-badge">
-                {storeLabel} · {bestOffer.price.toFixed(2)}€
+                {storeLabel} · {fmtPrice(bestOffer.price)}
               </span>
             ) : storeLabel ? (
               <span className="item-store-badge">{storeLabel}</span>
@@ -615,9 +601,13 @@ export default function ShoppingListPage() {
         {showOffers && matchedOffers.length > 1 && (
           <div className="item-offers-inline">
             {matchedOffers.slice(1).map((offer, idx) => (
-              <span key={idx} className={`offer-chip-inline ${isEigenmarkenDeal(offer.store, item.item, offer.price, eigenmarkenPrices) ? 'eigenmarken-deal' : ''}`}>
+              <span
+                key={idx}
+                className={`offer-chip-inline ${item.store === offer.store ? 'is-selected' : ''} ${isEigenmarkenDeal(offer.store, item.item, offer.price, eigenmarkenPrices) ? 'eigenmarken-deal' : ''}`}
+                title={`${offer.name} · ${STORE_LABELS[offer.store] || offer.store}`}
+              >
                 <span className="offer-store-badge">{STORE_LABELS[offer.store] || offer.store}</span>
-                <span className="offer-price">{offer.price?.toFixed(2)}€</span>
+                <span className="offer-price">{fmtPrice(offer.price)}</span>
               </span>
             ))}
           </div>
@@ -668,12 +658,14 @@ export default function ShoppingListPage() {
         >
           Nach Laden
         </button>
-        {totalPrice > 0 && (
-          <span className="total-price-badge">
-            💰 Summe: {totalPrice.toFixed(2)}€
-          </span>
-        )}
       </div>
+
+      {totalPrice > 0 && (
+        <div className="shopping-sum">
+          <span className="shopping-sum-label">Summe der besten Angebote</span>
+          <strong className="shopping-sum-value">{fmtPrice(totalPrice)}</strong>
+        </div>
+      )}
 
       {scrapeStatus && (
         <div className={`status-message ${scrapeStatus.type}`}>

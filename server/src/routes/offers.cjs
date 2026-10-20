@@ -1,6 +1,6 @@
 const express = require('express');
 const { getProgress, getOffers, matchItemsToOffers, scrapeAndPersist } = require('../services/offersScraper.cjs');
-const offersHistoryRouter = require('./offersHistory.cjs');
+const offersHistory = require('./offersHistory.cjs');
 
 const router = express.Router();
 
@@ -33,7 +33,7 @@ router.post('/scrape', async (req, res) => {
       .catch(err => {
         console.error('Background scrape error:', err);
         try {
-          offersHistoryRouter.saveScrapeRecord('marktguru', 0, false, String(err.message || err), 'marktguru');
+          offersHistory.saveScrapeRecord('marktguru', 0, false, String(err.message || err), 'marktguru');
         } catch {}
       });
     res.json({ success: true, started: true });
@@ -63,7 +63,7 @@ router.post('/scrape/marktguru', async (req, res) => {
       .catch(err => {
         console.error('Background marktguru scrape error:', err);
         try {
-          offersHistoryRouter.saveScrapeRecord('marktguru', 0, false, String(err.message || err), 'marktguru');
+          offersHistory.saveScrapeRecord('marktguru', 0, false, String(err.message || err), 'marktguru');
         } catch {}
       });
     res.json({ success: true, started: true });
@@ -73,23 +73,36 @@ router.post('/scrape/marktguru', async (req, res) => {
   }
 });
 
-router.get('/match', async (req, res) => {
+// GET /api/offers/match?listId=3 — Angebots-Treffer für eine Einkaufsliste
+// (Direkt aus der DB; der frühere interne HTTP-Aufruf auf eine nicht
+// existierende Route lieferte für jede Liste „List not found".)
+router.get('/match', (req, res) => {
   try {
     const { listId } = req.query;
-    if (!listId) {
-      return res.status(400).json({ error: 'listId required' });
-    }
-    
-    const listRes = await fetch(`${req.protocol}://${req.get('host')}/api/shopping-lists/${listId}`);
-    if (!listRes.ok) {
-      return res.status(404).json({ error: 'List not found' });
-    }
-    const list = await listRes.json();
-    
-    const matches = matchItemsToOffers(list.items || []);
-    res.json({ matches });
+    if (!listId) return res.status(400).json({ error: 'listId required' });
+
+    const items = offersHistory.getDb()
+      .prepare('SELECT item, amount, unit, category, store, checked FROM shopping_items WHERE shopping_list_id = ? ORDER BY id')
+      .all(listId);
+    if (items.length === 0) return res.json({ matches: [], items: 0 });
+
+    const matches = matchItemsToOffers(items);
+    res.json({ matches, items: items.length });
   } catch (err) {
     console.error('GET /api/offers/match error:', err);
+    res.status(500).json({ error: 'Failed to match items' });
+  }
+});
+
+// POST /api/offers/match  { items: [{item, amount, unit, category}] }
+// Für die Einkaufsliste im Browser: ein Aufruf statt 4.000 Vergleiche je Karte.
+router.post('/match', (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 250) : [];
+    if (items.length === 0) return res.json({ matches: [] });
+    res.json({ matches: matchItemsToOffers(items) });
+  } catch (err) {
+    console.error('POST /api/offers/match error:', err);
     res.status(500).json({ error: 'Failed to match items' });
   }
 });
@@ -109,7 +122,7 @@ router.post('/price-summary', (req, res) => {
 
     if (items.length === 0) return res.json({ days, items: {} });
 
-    const db = offersHistoryRouter.getDb();
+    const db = offersHistory.getDb();
     const since = new Date(Date.now() - days * 86400000).toISOString();
     const names = [...new Set(items.map((i) => i.name))];
     const placeholders = names.map(() => '?').join(',');

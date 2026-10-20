@@ -347,29 +347,24 @@ function fuzzyMatch(itemName, offerName) {
 
 function matchItemsToOffers(shoppingItems) {
   if (!shoppingItems || shoppingItems.length === 0) return [];
-  
-  const results = [];
-  for (const item of shoppingItems) {
-    if (item.checked) continue;
-    const matchedOffers = [];
-    for (const [store, offers] of Object.entries(cachedOffers)) {
-      for (const offer of offers) {
-        const score = fuzzyMatch(item.item, offer.name);
-        if (score > 0.3) {
-          matchedOffers.push({ store, name: offer.name, price: offer.price, matchScore: score });
-        }
-      }
-    }
-    matchedOffers.sort((a, b) => b.matchScore - a.matchScore || a.price - b.price);
-    if (matchedOffers.length > 0) {
-      results.push({
-        item: item.item, amount: item.amount, unit: item.unit,
-        category: item.category, store: item.store,
-        bestOffers: matchedOffers.slice(0, 3)
-      });
-    }
+
+  const { matchItems } = require('./productMatch.cjs');
+  const flat = [];
+  for (const [store, offers] of Object.entries(cachedOffers)) {
+    for (const offer of offers) flat.push({ ...offer, store });
   }
-  return results;
+
+  const open = shoppingItems.filter((it) => !it.checked && String(it.item || '').trim());
+  return matchItems(open, flat, { minScore: 0.6, limit: 3 })
+    .filter((m) => m.offers.length > 0)
+    .map((m) => ({
+      item: m.item,
+      amount: m.amount,
+      unit: m.unit,
+      category: m.category,
+      store: m.store,
+      bestOffers: m.offers,
+    }));
 }
 
 function getOffers() {

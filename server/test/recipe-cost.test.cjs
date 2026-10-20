@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { ingredientScore, tokens, stem } = require('../src/services/recipeCost.cjs');
+const { ingredientScore, tokens, stem } = require('../src/services/productMatch.cjs');
 
 test('exakte Treffer', () => {
   assert.strictEqual(ingredientScore('Zwiebeln', 'Zwiebeln'), 1);
