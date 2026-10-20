@@ -80,8 +80,8 @@ function Sparkline({ points }) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
-  const w = 64;
-  const h = 16;
+  const w = 100;
+  const h = 22;
   const coords = points.map((p, i) => ({
     x: (i / (points.length - 1)) * (w - 3) + 1.5,
     y: h - 2 - ((p.price - min) / span) * (h - 4),
@@ -92,9 +92,10 @@ function Sparkline({ points }) {
   return (
     <svg
       className={`offer-spark${falling ? ' is-down' : ''}`}
-      width={w}
-      height={h}
+      width="100%"
+      height={28}
       viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
       role="img"
       aria-label={`Preisverlauf, ${falling ? 'fallend' : 'steigend'}`}
     >
@@ -660,6 +661,9 @@ export default function OffersPage() {
                       {stat && stat.weekly.length >= 2 && (
                         <span className="offer-trend" title={`Wochen-Tiefstpreise (${stat.count} Messungen, 365 Tage)`}>
                           <Sparkline points={stat.weekly} />
+                          <span className="offer-trend-label">
+                            {stat.min != null ? `Tief ${formatPrice(stat.min)}` : 'Verlauf'}
+                          </span>
                         </span>
                       )}
                       {o.unit_price ? <span>{formatPrice(o.unit_price)}/{o.unit || 'Einh.'}</span> : null}

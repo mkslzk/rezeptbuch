@@ -464,14 +464,25 @@
   color: #3f6b2c;
 }
 
+/* Mini-Verlauf: mobil ausblenden (Karten sind dort nur ~170 px breit),
+   auf breiten Karten volle Breite mit Beschriftung */
 .offer-trend {
-  display: inline-flex;
+  display: none;
   align-items: center;
-  margin-left: auto;
+  gap: 0.4rem;
+  flex: 1 1 100%;
+  margin-top: 0.15rem;
   color: #a8927c;
 }
 
-.offer-spark { overflow: visible; }
+.offer-trend-label {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  color: #6b5a4a;
+  font-variant-numeric: tabular-nums;
+}
+
+.offer-spark { overflow: visible; min-width: 40px; }
 .offer-spark.is-down { color: var(--color-green, #4c7a34); }
 
 .offer-name {
@@ -548,6 +559,7 @@
 .offer-meta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.2rem 0.5rem;
   margin: 0.3rem 0 0;
   font-size: 0.8rem;
@@ -731,6 +743,9 @@
 }
 
 @media (min-width: 721px) {
+  .offer-trend { display: inline-flex; }
+  .offer-trend svg { flex: 1 1 auto; }
+
   .offers-sheet {
     margin: auto;
     width: min(680px, 92vw);
