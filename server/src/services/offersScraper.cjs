@@ -844,5 +844,5 @@ module.exports = {
   hydrateOffersFromHistory, scrapeAndPersist,
   scrapeAllSources, getApiRetailers, getKaufdaStores, storeDisplayName,
   DEFAULT_API_STORES, DEFAULT_KAUFDA_STORES, mergeKaufdaOffers,
-  getOffers, matchItemsToOffers,
+  getOffers, matchItemsToOffers, fuzzyMatch,
 };

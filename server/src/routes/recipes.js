@@ -4,6 +4,31 @@ import { db } from '../db/index.js';
 
 const router = Router();
 
+// GET /api/recipes/:id/week-cost — Zutaten gegen aktuelle Angebote rechnen
+router.get('/recipes/:id/week-cost', async (req, res) => {
+  try {
+    const recipe = db.prepare('SELECT id, title, servings, ingredients FROM recipes WHERE id = ?').get(req.params.id);
+    if (!recipe) return res.status(404).json({ error: 'Rezept nicht gefunden' });
+
+    let ingredients = [];
+    try { ingredients = JSON.parse(recipe.ingredients || '[]'); } catch { ingredients = []; }
+
+    const { weekCostForIngredients } = await import('../services/recipeCost.cjs');
+    const cost = weekCostForIngredients(ingredients);
+
+    res.json({
+      recipe_id: recipe.id,
+      title: recipe.title,
+      servings: recipe.servings ?? null,
+      per_serving: recipe.servings && cost.sum > 0 ? Math.round((cost.sum / recipe.servings) * 100) / 100 : null,
+      ...cost,
+    });
+  } catch (err) {
+    console.error('GET /api/recipes/:id/week-cost error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/recipes
 router.get('/recipes', (req, res) => {
   try {

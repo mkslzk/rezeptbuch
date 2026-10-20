@@ -8,6 +8,7 @@ export default function RecipeDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [recipe, setRecipe] = useState(null);
+  const [weekCost, setWeekCost] = useState(null);
   const [addingToMealPlan, setAddingToMealPlan] = useState(false);
   const [showAddToMealPlan, setShowAddToMealPlan] = useState(false);
   const [servingMultiplier, setServingMultiplier] = useState(1);
@@ -136,6 +137,16 @@ export default function RecipeDetailPage() {
     } catch (err) { alert('Duplizieren fehlgeschlagen'); }
   }
 
+  useEffect(() => {
+    if (!id) return;
+    let alive = true;
+    fetch(`/recipe/api/recipes/${id}/week-cost`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (alive && j) setWeekCost(j); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [id, recipe?.id]);
+
   if (!recipe) return <div className="loading">Lädt...</div>;
   let ingredients = [], steps = [], tags = [];
   try { ingredients = JSON.parse(recipe.ingredients); } catch {}
@@ -249,6 +260,45 @@ export default function RecipeDetailPage() {
         <div className="detail-sections">
           <div className="ingredients-section">
             <h2>Zutaten</h2>
+            {weekCost && weekCost.matchedCount > 0 && (
+              <div className="week-cost">
+                <div className="week-cost-head">
+                  <span className="week-cost-kicker">Diese Woche im Angebot</span>
+                  <span className="week-cost-sum">
+                    {Number(weekCost.sum).toFixed(2).replace('.', ',')} €
+                    {weekCost.per_serving ? (
+                      <em>
+                        {' '}· {Number(weekCost.per_serving).toFixed(2).replace('.', ',')} € / Portion
+                        {recipe.servings ? ` (${recipe.servings})` : ''}
+                      </em>
+                    ) : null}
+                  </span>
+                </div>
+                <p className="week-cost-sub">
+                  Angebots-Summe aus {weekCost.matchedCount} von {weekCost.totalCount} Zutaten ·
+                  Packungspreise, keine Rezeptmengen
+                </p>
+                {weekCost.items.some((it) => !it.offer) && (
+                  <p className="week-cost-missing">
+                    Ohne Angebot: {weekCost.items.filter((it) => !it.offer).map((it) => it.item).join(' · ')}
+                  </p>
+                )}
+                <ul className="week-cost-list">
+                  {weekCost.items.filter((it) => it.offer).map((it, i) => (
+                    <li key={`${it.item}-${i}`} className={it.priceable ? '' : 'is-noprice'}>
+                      <span className="week-cost-item">{it.item}</span>
+                      <span className="week-cost-offer">
+                        {it.offer.name}
+                        <span className="week-cost-store">{it.offer.store_label || it.offer.store}</span>
+                      </span>
+                      <span className="week-cost-price">
+                        {it.priceable ? `${Number(it.offer.price).toFixed(2).replace('.', ',')} €` : '—'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <ul className="ingredients-list">{ingredients.map((ing, i) => {
               const scaled = scaleAmount(ing.amount, ing.unit, servingMultiplier);
               const amount = scaled
