@@ -789,7 +789,8 @@ async function scrapeAllSources(source = 'marktguru') {
           }
           // Gecachte OFF-Tags schlagen die Heuristik (nur bei sicherem Match mit ≥2 Wortüberschneidungen)
           if (match.score >= 0.8 && (match.overlap >= 2 || match.score >= 0.99)) {
-            const offDiet = offLookup.dietFromCachedAnalysis(match.code);
+            // Erst die lokale DB (Dump-Rebuild), dann der API-Cache
+            const offDiet = offLookup.dietFromCode(match.code) || offLookup.dietFromCachedAnalysis(match.code);
             if (offDiet === 'vegan') { o.diet_tag = 'vegan'; o.diet_source = 'off'; offCached++; }
             else if (offDiet === 'vegetarisch' && o.diet_tag !== 'vegan') { o.diet_tag = 'vegetarisch'; o.diet_source = 'off'; offCached++; }
           }

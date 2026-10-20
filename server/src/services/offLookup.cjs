@@ -242,6 +242,27 @@ async function fetchAnalysis(code, { retries = 2 } = {}) {
   return null;
 }
 
+/** Ernährungseinstufung direkt aus off.db (Spalten vegan/vegetarian/non_vegan, seit Dump-Rebuild). */
+let dietStmt = null;
+function dietFromCode(code) {
+  const db = getOffDb();
+  if (!db) return null;
+  try {
+    if (!dietStmt) {
+      dietStmt = db.prepare('SELECT vegan, vegetarian, non_vegan FROM products WHERE code = ?');
+    }
+    const row = dietStmt.get(code);
+    if (!row) return null;
+    if (row.vegan) return 'vegan';
+    if (row.vegetarian && !row.non_vegan) return 'vegetarisch';
+    if (row.non_vegan) return 'nicht-vegan';
+    return null;
+  } catch {
+    // Alte off.db ohne diese Spalten → Fallback auf den API-Cache
+    return null;
+  }
+}
+
 /** Ernährungseinstufung aus gecachten OFF-Tags (ohne Netzwerk). */
 function dietFromCachedAnalysis(code) {
   const a = getCachedAnalysis(code);
@@ -257,6 +278,7 @@ module.exports = {
   categoryFromOffCategories,
   fetchAnalysis,
   getCachedAnalysis,
+  dietFromCode,
   dietFromCachedAnalysis,
   ensureAnalysisTable,
   tokens,
