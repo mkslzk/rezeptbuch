@@ -112,6 +112,11 @@ const offersRouter = require('./routes/offers.cjs');
 app.use('/api/offers', offersRouter);
 app.use('/recipe/api/offers', offersRouter);
 
+// Merkliste (Favoriten)
+const favoritesRouter = require('./routes/favorites.cjs');
+app.use('/api/favorites', favoritesRouter);
+app.use('/recipe/api/favorites', favoritesRouter);
+
 // OpenFoodFacts Update router (manual trigger + changelog review)
 const offUpdateRouter = require('./routes/offersOFFUpdate.cjs');
 app.use('/api/offers/off-update', offUpdateRouter);

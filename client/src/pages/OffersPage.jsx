@@ -27,6 +27,7 @@ const EMPTY_FILTERS = {
   categories: [],
   diet: 'all',
   onlyFood: true,
+  onlyFavorites: false,
   sortBy: 'discount',
 };
 
@@ -68,6 +69,41 @@ function oldPriceLabel(source) {
   }
 }
 
+function favKey(name, brand) {
+  return `${String(name || '').trim()}||${String(brand || '').trim()}`;
+}
+
+// Mini-Verlauf der Wochen-Tiefstpreise (SVG, kein Chart-Paket nötig)
+function Sparkline({ points }) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  const values = points.map((p) => p.price);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const w = 64;
+  const h = 16;
+  const coords = points.map((p, i) => ({
+    x: (i / (points.length - 1)) * (w - 3) + 1.5,
+    y: h - 2 - ((p.price - min) / span) * (h - 4),
+  }));
+  const d = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+  const last = coords[coords.length - 1];
+  const falling = values[values.length - 1] <= values[0];
+  return (
+    <svg
+      className={`offer-spark${falling ? ' is-down' : ''}`}
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      role="img"
+      aria-label={`Preisverlauf, ${falling ? 'fallend' : 'steigend'}`}
+    >
+      <path d={d} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={last.x} cy={last.y} r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
 function matchesQuery(offer, q) {
   if (!q) return true;
   return `${offer.name} ${offer.brand || ''} ${offer.category_label || ''} ${offer.description || ''}`
@@ -86,9 +122,12 @@ export default function OffersPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [scraping, setScraping] = useState(false);
   const [progress, setProgress] = useState(null);
+  const [favorites, setFavorites] = useState([]);
+  const [priceStats, setPriceStats] = useState({});
   const dialogRef = useRef(null);
+  const priceTimer = useRef(null);
 
-  const { query, stores: activeStores, categories: activeCats, diet, onlyFood, sortBy } = filters;
+  const { query, stores: activeStores, categories: activeCats, diet, onlyFood, onlyFavorites, sortBy } = filters;
 
   function update(patch) {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -117,6 +156,10 @@ export default function OffersPage() {
 
   useEffect(() => {
     load();
+    fetch('/recipe/api/favorites')
+      .then((r) => r.json())
+      .then((j) => setFavorites(j.favorites || []))
+      .catch(() => {});
     fetch('/recipe/api/settings/stores')
       .then((r) => r.json())
       .then((j) => {
@@ -141,6 +184,27 @@ export default function OffersPage() {
     if (filterOpen && !el.open) el.showModal();
     if (!filterOpen && el.open) el.close();
   }, [filterOpen]);
+
+  const favoriteKeys = useMemo(
+    () => new Set(favorites.map((f) => favKey(f.name, f.brand))),
+    [favorites]
+  );
+
+  async function toggleFavorite(offer) {
+    const key = favKey(offer.name, offer.brand);
+    const existing = favorites.find((f) => favKey(f.name, f.brand) === key);
+    try {
+      const res = existing
+        ? await fetch(`/recipe/api/favorites/${existing.id}`, { method: 'DELETE' })
+        : await fetch('/recipe/api/favorites', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: offer.name, brand: offer.brand || null }),
+          });
+      const json = await res.json();
+      if (Array.isArray(json.favorites)) setFavorites(json.favorites);
+    } catch { /* still ok */ }
+  }
 
   const allOffers = useMemo(() => {
     const out = [];
@@ -176,6 +240,7 @@ export default function OffersPage() {
     if (!skipCats && activeCats.length) out = out.filter((o) => activeCats.includes(o.category));
     if (diet !== 'all') out = out.filter((o) => o.diet_tag === diet);
     if (onlyFood) out = out.filter((o) => !NON_FOOD_CATEGORIES.has(o.category));
+    if (onlyFavorites) out = out.filter((o) => favoriteKeys.has(favKey(o.name, o.brand)));
     if (q) out = out.filter((o) => matchesQuery(o, q));
     return out;
   }
@@ -193,7 +258,7 @@ export default function OffersPage() {
       }))
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allOffers, data.offers, labels, activeStores, activeCats, diet, onlyFood, query]);
+  }, [allOffers, data.offers, labels, activeStores, activeCats, diet, onlyFood, onlyFavorites, favoriteKeys, query]);
 
   const categoryFacets = useMemo(() => {
     const base = applyBase(allOffers, { skipCats: true });
@@ -206,7 +271,7 @@ export default function OffersPage() {
     }
     return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allOffers, activeStores, activeCats, diet, onlyFood, query]);
+  }, [allOffers, activeStores, activeCats, diet, onlyFood, onlyFavorites, favoriteKeys, query]);
 
   const visible = useMemo(() => {
     const list = applyBase(allOffers);
@@ -222,9 +287,36 @@ export default function OffersPage() {
     }
     return sorted;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allOffers, activeStores, activeCats, diet, onlyFood, query, sortBy, labels]);
+  }, [allOffers, activeStores, activeCats, diet, onlyFood, onlyFavorites, favoriteKeys, query, sortBy, labels]);
 
-  const activeFilterCount = activeStores.length + activeCats.length + (diet !== 'all' ? 1 : 0) + (onlyFood ? 0 : 1);
+  // Nur die tatsächlich gerenderten Karten abfragen (max. 120 pro Seite)
+  const rendered = useMemo(() => visible.slice(0, visibleCount), [visible, visibleCount]);
+
+  useEffect(() => {
+    if (rendered.length === 0) return;
+    const uniq = [];
+    const seen = new Set();
+    for (const o of rendered) {
+      const k = favKey(o.name, o.brand);
+      if (!seen.has(k)) { seen.add(k); uniq.push({ name: o.name, brand: o.brand || null }); }
+    }
+    if (priceTimer.current) clearTimeout(priceTimer.current);
+    priceTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch('/recipe/api/offers/price-summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: uniq.slice(0, 200), days: 365 }),
+        });
+        const json = await res.json();
+        if (json.items) setPriceStats((prev) => ({ ...prev, ...json.items }));
+      } catch { /* Verlauf ist Beiwerk, Karten bleiben nutzbar */ }
+    }, 350);
+    return () => { if (priceTimer.current) clearTimeout(priceTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rendered]);
+
+  const activeFilterCount = activeStores.length + activeCats.length + (diet !== 'all' ? 1 : 0) + (onlyFood ? 0 : 1) + (onlyFavorites ? 1 : 0);
 
   function toggleIn(listName, key) {
     const current = filters[listName];
@@ -370,12 +462,17 @@ export default function OffersPage() {
               {categoryLabels[key] || key} <span aria-hidden="true">×</span>
             </button>
           ))}
+          {onlyFavorites && (
+            <button type="button" className="offers-tag" onClick={() => update({ onlyFavorites: false })}>
+              ♥ Merkliste <span aria-hidden="true">×</span>
+            </button>
+          )}
           {onlyFood && (
             <button type="button" className="offers-tag" onClick={() => update({ onlyFood: false })}>
               nur Lebensmittel <span aria-hidden="true">×</span>
             </button>
           )}
-          {(activeStores.length > 0 || activeCats.length > 0 || diet !== 'all' || !onlyFood || query) && (
+          {(activeStores.length > 0 || activeCats.length > 0 || diet !== 'all' || !onlyFood || onlyFavorites || query) && (
             <button type="button" className="offers-resetall" onClick={resetFilters}>Alles zurücksetzen</button>
           )}
         </div>
@@ -458,6 +555,14 @@ export default function OffersPage() {
                 <input type="checkbox" checked={onlyFood} onChange={(e) => update({ onlyFood: e.target.checked })} />
                 nur Lebensmittel (ohne Non-Food, Drogerie, Rabatt-Aktionen)
               </label>
+              <label className="offers-check">
+                <input
+                  type="checkbox"
+                  checked={onlyFavorites}
+                  onChange={(e) => update({ onlyFavorites: e.target.checked })}
+                />
+                ♥ nur Merkliste ({favorites.length})
+              </label>
             </section>
           </div>
 
@@ -497,6 +602,17 @@ export default function OffersPage() {
               const validTo = formatValidTo(o.valid_to);
               const uvp = oldPriceLabel(o.old_price_source);
               const dietMeta = o.diet_tag ? DIET_META[o.diet_tag] : null;
+              const stat = priceStats[favKey(o.name, o.brand)];
+              const isFav = favoriteKeys.has(favKey(o.name, o.brand));
+              // "Tiefstpreis" erst, wenn der Verlauf wirklich eine Zeitspanne abdeckt —
+              // sonst wäre jede Karte aus dem heutigen Scrape ein "Tiefstpreis".
+              const spanDays = stat && stat.firstAt && stat.lastAt
+                ? (new Date(stat.lastAt) - new Date(stat.firstAt)) / 86400000
+                : 0;
+              const isLowest = Boolean(
+                stat && stat.count >= 4 && spanDays >= 21 && stat.min != null
+                && typeof o.price === 'number' && o.price <= stat.min + 0.005
+              );
               return (
                 <article className="offer-card" key={`${o.store}-${o.offer_id || o.name}-${i}`}>
                   <div className="offer-top">
@@ -504,11 +620,23 @@ export default function OffersPage() {
                       <span className="offers-dotcolor" style={{ background: STORE_COLORS[o.store] || '#8a7b6c' }} aria-hidden="true" />
                       {labels[o.store] || o.store}
                     </span>
-                    {dietMeta && (
-                      <span className={`offer-diet offer-diet-${o.diet_tag}`} aria-label={dietMeta.label} title={dietMeta.label}>
-                        {dietMeta.icon}
-                      </span>
-                    )}
+                    <span className="offer-actions">
+                      {dietMeta && (
+                        <span className={`offer-diet offer-diet-${o.diet_tag}`} aria-label={dietMeta.label} title={dietMeta.label}>
+                          {dietMeta.icon}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className={`offer-heart${isFav ? ' is-fav' : ''}`}
+                        onClick={() => toggleFavorite(o)}
+                        aria-pressed={isFav}
+                        aria-label={isFav ? `${o.name} von der Merkliste entfernen` : `${o.name} zur Merkliste`}
+                        title={isFav ? 'Von der Merkliste entfernen' : 'Zur Merkliste'}
+                      >
+                        {isFav ? '♥' : '♡'}
+                      </button>
+                    </span>
                   </div>
 
                   <h3 className="offer-name">{o.name}</h3>
@@ -526,8 +654,14 @@ export default function OffersPage() {
                       {typeof o.discount_percent === 'number' && (
                         <span className="offer-discount">−{Math.round(o.discount_percent)} %</span>
                       )}
+                      {isLowest && <span className="offer-lowest">Tiefstpreis</span>}
                     </div>
                     <p className="offer-meta">
+                      {stat && stat.weekly.length >= 2 && (
+                        <span className="offer-trend" title={`Wochen-Tiefstpreise (${stat.count} Messungen, 365 Tage)`}>
+                          <Sparkline points={stat.weekly} />
+                        </span>
+                      )}
                       {o.unit_price ? <span>{formatPrice(o.unit_price)}/{o.unit || 'Einh.'}</span> : null}
                       {validTo ? <span>bis {validTo}</span> : null}
                       {o.upcoming ? <span className="offer-upcoming">ab nächster Woche</span> : null}
