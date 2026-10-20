@@ -232,6 +232,10 @@ if (offersScraper) {
 const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');
 app.use('/recipe', express.static(clientDistPath));
 
+// Alte/kurze Links (z. B. Mission Control ohne Pfad) auf die SPA umleiten —
+// sonst rendert der Router mit basename="/recipe" eine leere Seite.
+app.get('/', (req, res) => res.redirect(302, '/recipe/'));
+
 // For any non-API route, return 404 for API-like paths or serve index.html for SPA
 app.get('*', (req, res) => {
   // If it's an API-like path that wasn't handled, return 404
