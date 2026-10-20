@@ -10,6 +10,14 @@ const STORE_EMOJI = {
   rossmann: '🟤', dm: '🟦', mueller: '🟨',
 };
 
+const DIET_META = {
+  vegan: { label: 'vegan', icon: '🌱' },
+  vegetarisch: { label: 'vegetarisch', icon: '🥚' },
+  fleisch: { label: 'Fleisch/Fisch', icon: '🥩' },
+};
+
+const NON_FOOD_CATEGORIES = new Set(['nonfood', 'drogerie-haushalt']);
+
 function formatPrice(value) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '–';
   return value.toFixed(2).replace('.', ',') + ' €';
@@ -39,6 +47,9 @@ export default function OffersPage() {
   const [error, setError] = useState(null);
   const [query, setQuery] = useState('');
   const [activeStores, setActiveStores] = useState([]);
+  const [activeCats, setActiveCats] = useState([]);
+  const [diet, setDiet] = useState('all');
+  const [onlyFood, setOnlyFood] = useState(false);
   const [onlyDiscounts, setOnlyDiscounts] = useState(false);
   const [sortBy, setSortBy] = useState('discount');
   const [scraping, setScraping] = useState(false);
@@ -86,17 +97,39 @@ export default function OffersPage() {
     const avg = withDiscount.length
       ? Math.round(withDiscount.reduce((s, o) => s + o.discount_percent, 0) / withDiscount.length)
       : null;
-    return { count: allOffers.length, withDiscount: withDiscount.length, avg, stores: stores.length };
+    const vegan = allOffers.filter((o) => o.diet_tag === 'vegan').length;
+    return { count: allOffers.length, withDiscount: withDiscount.length, avg, stores: stores.length, vegan };
   }, [allOffers, stores.length]);
+
+  // Warengruppen mit Zählern (nach Häufigkeit)
+  const categories = useMemo(() => {
+    const counts = new Map();
+    for (const o of allOffers) {
+      if (!o.category) continue;
+      const entry = counts.get(o.category) || { key: o.category, label: o.category_label || o.category, count: 0 };
+      entry.count++;
+      counts.set(o.category, entry);
+    }
+    return [...counts.values()].sort((a, b) => b.count - a.count);
+  }, [allOffers]);
+
+  const dietCounts = useMemo(() => {
+    const c = { vegan: 0, vegetarisch: 0, fleisch: 0 };
+    for (const o of allOffers) if (o.diet_tag && c[o.diet_tag] !== undefined) c[o.diet_tag]++;
+    return c;
+  }, [allOffers]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = allOffers;
     if (activeStores.length) list = list.filter((o) => activeStores.includes(o.store));
+    if (activeCats.length) list = list.filter((o) => activeCats.includes(o.category));
+    if (diet !== 'all') list = list.filter((o) => o.diet_tag === diet);
+    if (onlyFood) list = list.filter((o) => !NON_FOOD_CATEGORIES.has(o.category));
     if (onlyDiscounts) list = list.filter((o) => typeof o.discount_percent === 'number');
     if (q) {
       list = list.filter((o) =>
-        `${o.name} ${o.brand || ''} ${o.category || ''}`.toLowerCase().includes(q)
+        `${o.name} ${o.brand || ''} ${o.category_label || ''} ${o.description || ''}`.toLowerCase().includes(q)
       );
     }
     const sorted = [...list];
@@ -104,10 +137,14 @@ export default function OffersPage() {
     else if (sortBy === 'price') sorted.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
     else if (sortBy === 'store') sorted.sort((a, b) => a.store.localeCompare(b.store) || (a.price ?? 0) - (b.price ?? 0));
     return sorted;
-  }, [allOffers, activeStores, onlyDiscounts, query, sortBy]);
+  }, [allOffers, activeStores, activeCats, diet, onlyFood, onlyDiscounts, query, sortBy]);
 
   function toggleStore(store) {
     setActiveStores((prev) => prev.includes(store) ? prev.filter((s) => s !== store) : [...prev, store]);
+  }
+
+  function toggleCategory(key) {
+    setActiveCats((prev) => prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]);
   }
 
   async function startScrape() {
@@ -153,6 +190,7 @@ export default function OffersPage() {
           <p className="offers-sub">
             {totals.count.toLocaleString('de-DE')} Angebote aus {totals.stores} Ketten
             {totals.withDiscount > 0 && ` · ${totals.withDiscount.toLocaleString('de-DE')} mit Ersparnis (Ø ${totals.avg} %)`}
+            {totals.vegan > 0 && ` · 🌱 ${totals.vegan.toLocaleString('de-DE')} vegan`}
             {' · '}Stand {lastUpdatedText}
           </p>
         </div>
@@ -178,9 +216,19 @@ export default function OffersPage() {
           onChange={(e) => setQuery(e.target.value)}
         />
         <label className="offers-check">
+          <input type="checkbox" checked={onlyFood} onChange={(e) => setOnlyFood(e.target.checked)} />
+          nur Lebensmittel
+        </label>
+        <label className="offers-check">
           <input type="checkbox" checked={onlyDiscounts} onChange={(e) => setOnlyDiscounts(e.target.checked)} />
           nur mit Ersparnis
         </label>
+        <select className="offers-select" value={diet} onChange={(e) => setDiet(e.target.value)}>
+          <option value="all">Ernährung: alle</option>
+          <option value="vegan">🌱 vegan ({dietCounts.vegan})</option>
+          <option value="vegetarisch">🥚 vegetarisch ({dietCounts.vegetarisch})</option>
+          <option value="fleisch">🥩 Fleisch/Fisch ({dietCounts.fleisch})</option>
+        </select>
         <select className="offers-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
           <option value="discount">Sortierung: Ersparnis</option>
           <option value="price">Sortierung: Preis</option>
@@ -207,6 +255,24 @@ export default function OffersPage() {
           <button className="offers-chip offers-chip-reset" onClick={() => setActiveStores([])}>× Filter</button>
         )}
       </div>
+
+      {categories.length > 0 && (
+        <div className="offers-stores offers-cats">
+          {categories.map((c) => (
+            <button
+              key={c.key}
+              className={`offers-chip offers-chip-cat${activeCats.includes(c.key) ? ' is-active' : ''}`}
+              onClick={() => toggleCategory(c.key)}
+            >
+              {c.label}
+              <span className="offers-chip-count">{c.count}</span>
+            </button>
+          ))}
+          {activeCats.length > 0 && (
+            <button className="offers-chip offers-chip-reset" onClick={() => setActiveCats([])}>× Warengruppe</button>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <p className="offers-empty">Lade Angebote…</p>
@@ -236,6 +302,12 @@ export default function OffersPage() {
                   )}
                 </div>
                 <div className="offer-meta">
+                  {o.diet_tag && DIET_META[o.diet_tag] ? (
+                    <span className={`offer-diet offer-diet-${o.diet_tag}`}>
+                      {DIET_META[o.diet_tag].icon} {DIET_META[o.diet_tag].label}
+                    </span>
+                  ) : null}
+                  {o.category_label ? <span>{o.category_label}</span> : null}
                   {o.unit_price ? <span>{formatPrice(o.unit_price)} / {o.unit || 'Einheit'}</span> : null}
                   {validTo ? <span>bis {validTo}</span> : null}
                   {o.upcoming ? <span className="offer-upcoming">ab kommender Woche</span> : null}

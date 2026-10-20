@@ -1,5 +1,5 @@
 const express = require('express');
-const { scrapeAllStores, scrapeAllMarktguruStores, getProgress, getOffers, matchItemsToOffers, scrapeAndPersist } = require('../services/offersScraper.cjs');
+const { getProgress, getOffers, matchItemsToOffers, scrapeAndPersist } = require('../services/offersScraper.cjs');
 const offersHistoryRouter = require('./offersHistory.cjs');
 
 const router = express.Router();

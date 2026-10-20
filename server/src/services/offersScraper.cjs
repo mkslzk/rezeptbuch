@@ -1,10 +1,10 @@
 const cheerio = require('cheerio');
-const { chromium, firefox } = require('playwright');
-const { createWorker } = require('tesseract.js');
 const fs = require('fs');
 const path = require('path');
 const marktguruApi = require('./marktguruApi.cjs');
 const kaufdaApi = require('./kaufdaApi.cjs');
+const { classifyOffer } = require('./offerClassifier.cjs');
+const offLookup = require('./offLookup.cjs');
 
 // Load PLZ and EDEKA market ID from offers-config.json at runtime
 function getConfig() {
@@ -18,7 +18,8 @@ function getConfig() {
 }
 const config = getConfig();
 const PLZ = config.plz || '56377';
-const EDEKA_MARKET_ID = config.edekaMarketId || PLZ;
+// NORMA bleibt als einzige Direktquelle (Marktguru/Kaufda führen NORMA nicht strukturiert)
+const NORMA_URL = 'https://www.norma-online.de/de/angebote/';
 
 //===============================================================
 // Progress tracking (in-memory; client polls /api/offers/scrape/progress)
@@ -42,15 +43,6 @@ function getProgress() {
 }
 
 function clearProgress() { currentProgress = null; }
-
-// Marktguru stores from config (default to food stores only)
-const DEFAULT_MARKTGURU_STORES = [
-  'lidl', 'penny', 'rewe', 'kaufland', 'netto-marken-discount',
-  'nahkauf', 'toom', 'hornbach', 'obi', 'hellweg', 'kabs'
-];
-const MARKTGURU_STORE_CONFIG = config.marktguruStores || DEFAULT_MARKTGURU_STORES;
-// Excluded stores (user-configured in Settings → Stores)
-// Dynamic exclusion check: re-read config on every call so changes are picked up live
 function getExcludedStores() {
   try {
     const liveConfig = getConfig();
@@ -61,7 +53,7 @@ function getExcludedStores() {
 }
 const STORE_EXCLUDED = (storeKey) => getExcludedStores().includes(storeKey);
 
-// Build the MARKTGURU_STORES array from config
+// Anzeigename je Kette (Marktguru-URLs + API-Namen)
 const MARKTGURU_STORE_URLS = {
   'lidl': { name: 'Lidl', url: 'https://www.marktguru.de/r/lidl' },
   'penny': { name: 'PENNY', url: 'https://www.marktguru.de/r/penny' },
@@ -121,345 +113,10 @@ const DEFAULT_KAUFDA_STORES = [
 function storeDisplayName(key) {
   return (MARKTGURU_STORE_URLS[key] && MARKTGURU_STORE_URLS[key].name)
     || API_STORE_NAMES[key]
-    || (STORES[key] && STORES[key].name)
     || key;
 }
-
-// ============================================================
-// FEATURE FLAGS
-// ============================================================
-const USE_OLLAMA = true;
-const USE_OCR = true;
-// OLLAMA_HOST: in Docker use host.docker.internal, else localhost
-const OLLAMA_HOST = process.env.OLLAMA_HOST || (process.env.DOCKER_CONTAINER ? 'host.docker.internal' : 'localhost');
-const OLLAMA_URL = `http://${OLLAMA_HOST}:11434`;
-const OLLAMA_MODEL = 'llama3.2:1b';
-
-const STORES = {
-  aldi:  { name: 'ALDI Süd',  url: 'https://www.aldi-sued.de/angebote' },
-  lidl:  { name: 'LIDL',      url: 'https://www.lidl.de/angebote' },
-  netto: { name: 'Netto',      url: 'https://www.netto-online.de/angebote' },
-  penny: { name: 'PENNY',     url: 'https://www.penny.de/angebote' },
-  // NORMA: scrape weekly HTML offer pages, NOT the flipbook/PDF (flipbook requires
-  // a selected filial cookie and even with one, OCR on screenshots is too lossy).
-  // The landing page at /de/angebote/ lists the current week's category URLs
-  // (ab-montag, ab-mittwoch, ab-freitag, obst-und-gemuese) which are real HTML
-  // with structured <article class="produktBoxContainer"> + aria-label price.
-  norma: { name: 'NORMA',     url: 'https://www.norma-online.de/de/angebote/' },
-  rewe:  { name: 'REWE',      url: `https://www.rewe.de/angebote/?plz=${PLZ}` },
-  nettoLebensmittel: { name: 'Netto Food', url: `https://www.netto-online.de/lebensmittel-angebote/c-N07941?plz=${PLZ}` },
-  edeka: { name: 'EDEKA',     url: 'https://www.edeka.de/eh/angebote.jsp' }
-};
-
-// Store-specific scraping configs
-const SCRAPE_CONFIG = {
-  aldi: {
-    browser: 'firefox', waitUntil: 'networkidle', timeout: 30000,
-    useStealth: true,
-    scrollWait: 1200, scrollIterations: 12,
-    preFlow: async (page) => {
-      // Accept cookies
-      try {
-        const btn = await page.$('button[id*="cookie"], button[class*="cookie"], button:has-text("Akzeptieren"), button:has-text("Alles akzeptieren")');
-        if (btn) { await btn.click(); await page.waitForTimeout(1500); }
-      } catch(e) {}
-    },
-    selectors: ['div.product-tile', 'article[class*="product"]'],
-    extractName: ($, el) => {
-      const title = $(el).attr('title') || '';
-      if (title) return title.replace(/[*]/g, '').trim();
-      const h3 = $(el).find('h3').first();
-      return h3.length ? h3.text().trim() : '';
-    },
-    extractPrice: ($, el) => {
-      const ins = $(el).find('ins[aria-label*="Reduzierter Preis"], ins[aria-label*="Aktionspreis"]').first();
-      if (ins.length) {
-        const m = ins.attr('aria-label').match(/(\d+[.,]\d+)/);
-        if (m) return parseFloat(m[1].replace(',', '.'));
-      }
-      const price = $(el).find('[class*="price"]').first();
-      if (price.length) {
-        const m = price.text().match(/(\d+[.,]\d+)/);
-        if (m) return parseFloat(m[1].replace(',', '.'));
-      }
-      return null;
-    },
-    extractOfferId: ($, el) => $(el).attr('title') || ''
-  },
-  lidl: {
-    browser: 'firefox', waitUntil: 'domcontentloaded', timeout: 20000,
-    selectors: ['.odsc-tile'],
-    preFlow: async (page) => {
-      try {
-        const btn = await page.waitForSelector('button', { timeout: 5000 });
-        if (!btn) return;
-        const txt = await btn.textContent();
-        if (txt && (txt.includes('ZUSTIMMEN') || txt.includes('Akzeptieren') || txt.includes('ALLEN ZUSTIMMEN'))) {
-          await btn.click();
-          await page.waitForTimeout(1500);
-        }
-      } catch(e) {}
-      try {
-        const ytBtn = await page.$('.n-youtube-consent-popup__action');
-        if (ytBtn) await ytBtn.click();
-        await page.waitForTimeout(500);
-      } catch(e) {}
-    },
-    scrollWait: 600, scrollIterations: 6,
-    extractName: ($, el) => {
-      // Primary: .product-grid-box__title (visible title with brand)
-      let name = '';
-      $(el).find('.product-grid-box__title').each((_, h) => {
-        const t = $(h).text().trim().replace(/\s+/g, ' ').trim();
-        if (t && t.length > 2) name = t;
-      });
-      // Fallback: odsc-tile__headline
-      if (!name) {
-        $(el).find('.odsc-tile__headline, [class*="headline"]').each((_, h) => {
-          const t = $(h).text().trim();
-          if (t && t.length > 2 && !name) name = t;
-        });
-      }
-      // Last resort: URL slug
-      if (!name) {
-        const href = $(el).find('a').attr('href') || '';
-        const match = href.match(/\/p\/([^\/]+)\/p/i);
-        if (match) name = match[1].replace(/-/g, ' ').replace(/\+/g, ' ');
-      }
-      return name;
-    },
-    extractPrice: ($, el) => {
-      // .ods-price__value = actual sale price (not UVP, not percentage)
-      const priceVal = $(el).find('.ods-price__value').first().text();
-      const match = priceVal.match(/(\d+[.,]\d{2})/);
-      if (match) return parseFloat(match[1].replace(',', '.'));
-      return null;
-    },
-    extractOfferId: ($, el) => {
-      // Use URL product slug for dedup
-      const href = $(el).find('a').attr('href') || '';
-      const match = href.match(/\/p\/([^\/]+)\/p/i);
-      return match ? match[1] : null;
-    }
-  },
-  netto: {
-    browser: 'firefox', waitUntil: 'domcontentloaded', timeout: 30000,
-    scrollWait: 1000, scrollIterations: 6,
-    useStealth: true,
-    preFlow: async (page) => {
-      // Accept cookies
-      try {
-        await page.click('#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll');
-        await page.waitForTimeout(1500);
-      } catch(e) {}
-      
-      // Enter PLZ
-      const plzInput = await page.$('input[name="post_code"]');
-      if (plzInput) {
-        await plzInput.click();
-        for (const digit of PLZ) {
-          await page.keyboard.type(digit, { delay: 80 });
-          await page.waitForTimeout(50);
-        }
-        await page.keyboard.press('Enter');
-        await page.waitForTimeout(4000);
-      }
-      
-      // Click "Angebote" in nav
-      const navAngebote = await page.$('nav a[href*="/angebote/c-N07"]');
-      if (navAngebote) {
-        await navAngebote.click();
-        await page.waitForTimeout(5000);
-      }
-    },
-    selectors: ['[class*="product-tile"]', '[class*="offer-tile"]', 'article[class*="product"]'],
-    extractName: ($, el) => {
-      // Try multiple selectors for product name
-      const h3 = $(el).find('h3').first();
-      if (h3.length) return h3.text().trim();
-      const nameLink = $(el).find('a[class*="name"], a[class*="title"]').first();
-      if (nameLink.length) return nameLink.text().trim();
-      return '';
-    },
-    extractPrice: ($, el) => {
-      // Look for price in specific elements
-      const priceEl = $(el).find('[class*="price"]:not([class*="old"]):not([class*="original"])').first();
-      if (priceEl.length) {
-        const text = priceEl.text();
-        const match = text.match(/(\d+[.,]\d{2})/);
-        if (match) return parseFloat(match[1].replace(',', '.'));
-      }
-      // Fallback to any price in the tile
-      const tileText = $(el).text();
-      const match = tileText.match(/(\d+[.,]\d{2})\s*[€]?/);
-      if (match) return parseFloat(match[1].replace(',', '.'));
-      return null;
-    },
-    extractOfferId: ($, el) => {
-      const name = $(el).find('h3').first().text().trim() || '';
-      const priceEl = $(el).find('[class*="price"]').first();
-      const price = priceEl.length ? priceEl.text().match(/(\d+[.,]\d{2})/)?.[1] : '';
-      return `${name}|${price}`.replace(/\s+/g, '').substring(0, 50);
-    }
-  },
-  // Netto-Lebensmittel: same PLZ flow as netto, but for the "Lebensmittel" category page.
-  // This page is gated by Akamai and needs the same cookie+PLZ handshake as /angebote.
-  nettoLebensmittel: {
-    browser: 'firefox', waitUntil: 'domcontentloaded', timeout: 30000,
-    scrollWait: 1000, scrollIterations: 6,
-    useStealth: true,
-    preFlow: async (page) => {
-      // Accept cookies (same as netto)
-      try {
-        await page.click('#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll');
-        await page.waitForTimeout(1500);
-      } catch(e) {}
-
-      // Enter PLZ (the /lebensmittel-angebote page also gates on PLZ)
-      const plzInput = await page.$('input[name="post_code"]');
-      if (plzInput) {
-        await plzInput.click();
-        for (const digit of PLZ) {
-          await page.keyboard.type(digit, { delay: 80 });
-          await page.waitForTimeout(50);
-        }
-        await page.keyboard.press('Enter');
-        await page.waitForTimeout(4000);
-      }
-    },
-    selectors: ['[class*="product-tile"]', '[class*="offer-tile"]', 'article[class*="product"]', '[class*="grid"] article'],
-    extractName: ($, el) => {
-      const h3 = $(el).find('h3').first();
-      if (h3.length) return h3.text().trim();
-      const nameLink = $(el).find('a[class*="name"], a[class*="title"]').first();
-      if (nameLink.length) return nameLink.text().trim();
-      return '';
-    },
-    extractPrice: ($, el) => {
-      const priceEl = $(el).find('[class*="price"]:not([class*="old"]):not([class*="original"])').first();
-      if (priceEl.length) {
-        const text = priceEl.text();
-        const match = text.match(/(\d+[.,]\d{2})/);
-        if (match) return parseFloat(match[1].replace(',', '.'));
-      }
-      const tileText = $(el).text();
-      const match = tileText.match(/(\d+[.,]\d{2})\s*[€]?/);
-      if (match) return parseFloat(match[1].replace(',', '.'));
-      return null;
-    },
-    extractOfferId: ($, el) => {
-      const name = $(el).find('h3').first().text().trim() || '';
-      const priceEl = $(el).find('[class*="price"]').first();
-      const price = priceEl.length ? priceEl.text().match(/(\d+[.,]\d{2})/)?.[1] : '';
-      return `${name}|${price}`.replace(/\s+/g, '').substring(0, 50);
-    }
-  },
-  penny: {
-    browser: 'firefox', waitUntil: 'domcontentloaded', timeout: 30000,
-    scrollWait: 800, scrollIterations: 20,
-    // Penny lazy-loads via "Mehr angebote" / "Mehr laden" buttons — click them while scrolling
-    preFlow: async (page) => {
-      // Scroll and click "Mehr" buttons for several cycles
-      for (let i = 0; i < 8; i++) {
-        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-        await page.waitForTimeout(1200);
-        // Try multiple button selectors
-        const mehrBtn = await page.$(
-          'button:has-text("Mehr angebote"), button:has-text("Mehr laden"), ' +
-          'button:has-text("Weitere"), button[class*="more"]:not([disabled]), ' +
-          'a:has-text("Mehr angebote"), a:has-text("Mehr laden")'
-        );
-        if (mehrBtn) {
-          try {
-            await mehrBtn.click({ force: true });
-            await page.waitForTimeout(1500);
-          } catch(e) {}
-        }
-      }
-      // Scroll back to top before extraction
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await page.waitForTimeout(500);
-    },
-    selectors: ['article.offer-tile'],
-    extractName: ($, el) => {
-      return $(el).find('h3').first().text().trim().replace(/\*/g, '').trim() || '';
-    },
-    extractPrice: ($, el) => {
-      const priceBubble = $(el).find('[data-label-price="Angebotspreis"]');
-      if (!priceBubble.length) return null;
-      const text = priceBubble.text();
-      const match = text.match(/(\d+[.,]\d{2})/);
-      if (match) {
-        const price = parseFloat(match[1].replace(',', '.'));
-        // Skip app-only or invalid prices
-        if (price > 0 && price < 100) return price;
-      }
-      return null;
-    },
-    extractOriginalPrice: ($, el) => {
-      const origBubble = $(el).find('[data-label-cross-out="Streichpreis"]');
-      if (!origBubble.length) return null;
-      const text = origBubble.text();
-      const match = text.match(/UVP\s+(\d+[.,]\d{2})/);
-      return match ? parseFloat(match[1].replace(',', '.')) : null;
-    },
-    extractOfferId: ($, el) => {
-      // Use h3 text + price as unique ID
-      const name = $(el).find('h3').first().text().trim();
-      const priceBubble = $(el).find('[data-label-price="Angebotspreis"]');
-      const price = priceBubble.length ? priceBubble.text().match(/(\d+[.,]\d{2})/)?.[1] : '';
-      return `${name}|${price}`.replace(/\s+/g, '').substring(0, 60);
-    }
-  },
-  // NORMA: replaced isFlipbook+OCR with direct HTML scraping of weekly offer pages.
-  // Discovery happens inside scrapeNormaHtml() — it fetches the landing page,
-  // extracts the week's category URLs (ab-montag, ab-mittwoch, ab-freitag,
-  // obst-und-gemuese), then parses produktBoxContainer articles from each.
-  // Each page is server-rendered HTML — no JS rendering needed, no Akamai block.
-  norma: {
-    browser: 'chromium',  // not actually used (handler branches first), keeps config compatible
-    handler: 'normaHtml'
-  },
-  rewe: {
-    browser: 'firefox', waitUntil: 'domcontentloaded', timeout: 30000,
-    selectors: ['[class*="cor-offer-renderer-tile"]'],
-    scrollWait: 800, scrollIterations: 8,
-    // REWE: use data attributes for precise extraction (name + price from aria-label)
-    extractName: ($, el) => {
-      const link = $(el).find('a.cor-offer-information__title-link');
-      const name = link.attr('data-offer-title') || '';
-      if (!name) {
-        // Fallback to h3
-        const h3 = $(el).find('h3.cor-offer-information__title');
-        return h3.length > 0 ? h3.text().trim() : '';
-      }
-      return name;
-    },
-    extractPrice: ($, el) => {
-      const link = $(el).find('a.cor-offer-information__title-link');
-      const ariaLabel = link.attr('aria-label') || '';
-      // aria-label = "Pepsi, Aktionspreis 0,79 €"
-      // Fixed: was using 'd' instead of '\d'
-      const match = ariaLabel.match(/(\d+[.,]\d{2})\s*[€]?/);
-      return match ? parseFloat(match[1].replace(',', '.')) : null;
-    },
-    extractOfferId: ($, el) => {
-      const link = $(el).find('a.cor-offer-information__title-link');
-      return link.attr('data-offer-id') || '';
-    }
-  },
-  // EDEKA: uses a JSON API at /api/auth-proxy/?path=api%2Foffers%3Flimit%3D999
-  // No flipbook/OCR needed - direct API extraction via Playwright
-  edeka: {
-    browser: 'firefox', waitUntil: 'networkidle', timeout: 30000,
-    useApi: true
-  }
-};
-
 let cachedOffers = {};
 let lastUpdated = null;
-let tesseractWorker = null;
-
 // ============================================================
 // MUTUAL SCRAPER LOCK — prevents /scrape and /scrape/marktguru
 // from running simultaneously (otherwise they clobber each
@@ -467,212 +124,6 @@ let tesseractWorker = null;
 // ============================================================
 let currentScrapePromise = null;
 let currentScrapeError = null;
-
-// ============================================================
-// TESSERACT OCR
-// ============================================================
-async function getTesseractWorker() {
-  if (!tesseractWorker) {
-    console.log('  📝 Initializing Tesseract OCR (German)...');
-    tesseractWorker = await createWorker('deu');
-    console.log('  📝 Tesseract ready');
-  }
-  return tesseractWorker;
-}
-
-async function ocrImage(imageUrl) {
-  if (!USE_OCR) return null;
-  try {
-    const worker = await getTesseractWorker();
-    const { data: { text } } = await worker.recognize(imageUrl);
-    return text;
-  } catch (e) {
-    console.warn(`  ⚠️ OCR failed: ${e.message}`);
-    return null;
-  }
-}
-
-// ============================================================
-// OLLAMA SEMANTIC PARSING
-// ============================================================
-// Lazy-load llmClient to avoid a hard import cycle at module load
-// (offersScraper is required by routes/offers which is loaded early)
-let _llmClient = null;
-function getLlmClient() {
-  if (!_llmClient) {
-    try { _llmClient = require('./llmClient.cjs'); }
-    catch (e) { console.warn(`  ⚠️ llmClient not available: ${e.message}`); }
-  }
-  return _llmClient;
-}
-
-async function parseWithOllama(text, storeKey) {
-  if (!USE_OLLAMA || !text || text.length < 10) return null;
-
-  // The actual JSON-extraction prompt used for both Ollama and fallback providers.
-  const extractPrompt = `Extract ALL product offers from this text as a JSON array.
-
-Return ONLY valid JSON (no markdown, no explanation):
-[
-  {"name": "product name in German", "price": number},
-  ...
-]
-
-Rules:
-- Only products with prices in EUR
-- Price is a number (convert "1,29 €" or "1.29" or "€1.29" to number)
-- Product name max 80 chars
-- If no offers, return []
-
-TEXT:
-${text.substring(0, 8000)}`;
-
-  // Regex fallback used when JSON parsing fails (works on any provider).
-  const regexFallback = () => {
-    const priceLines = text.split('\n').filter(line => /[\d.,]+\s*[€]/.test(line));
-    const fallback = priceLines.map(line => {
-      const priceMatch = line.match(/(\d+[.,]\d{2})\s*[€]?/);
-      const name = line.replace(/\d+[.,]\d{2}\s*[€]?/g, '').trim().replace(/\*/g, '').slice(0, 80);
-      if (priceMatch && name.length > 2) {
-        return { name, price: parseFloat(priceMatch[1].replace(',', '.')), store: storeKey };
-      }
-    }).filter(Boolean);
-    if (fallback.length > 0) console.log(`  🔧 ${storeKey}: ${fallback.length} offers via regex fallback`);
-    return fallback;
-  };
-
-  // --- Try Ollama first (cheap, local) ---
-  try {
-    const res = await fetch(`${OLLAMA_URL}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: OLLAMA_MODEL, prompt: extractPrompt, stream: false, options: { temperature: 0.1, num_predict: 800 } }),
-      signal: AbortSignal.timeout(60000)
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const response = (data.response || '').trim();
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const offers = JSON.parse(jsonMatch[0]).filter(o => o.name && o.price > 0);
-        if (offers.length > 0) console.log(`  🧠 Ollama ${storeKey}: ${offers.length} offers`);
-        return offers.map(o => ({ ...o, store: storeKey }));
-      }
-      // Ollama responded but no JSON — try regex fallback before giving up
-      const regexOffers = regexFallback();
-      if (regexOffers.length > 0) return regexOffers;
-    } else {
-      throw new Error(`Ollama ${res.status}`);
-    }
-  } catch (e) {
-    console.warn(`  ⚠️ Ollama ${storeKey}: ${e.message} — falling back to configured LLM provider`);
-  }
-
-  // --- Fallback: configured LLM provider (OpenAI, MiniMax, etc.) via llmClient ---
-  // This kicks in when Ollama is unreachable (e.g. Docker without host Ollama)
-  // OR when Ollama responds with garbage. The user picks the provider in Settings → LLM.
-  const llm = getLlmClient();
-  if (llm) {
-    try {
-      const cfg = llm.getConfig();
-      const providerKey = cfg.provider || 'ollama';
-      // Skip if primary is still ollama (would just fail again) and we have no API key
-      if (providerKey === 'ollama') {
-        return regexFallback();
-      }
-      const messages = [
-        { role: 'system', content: 'You extract structured product offers from text. Always return valid JSON arrays only.' },
-        { role: 'user', content: extractPrompt }
-      ];
-      const responseText = await llm.chat(messages, { temperature: 0.1, maxTokens: 1500 });
-      const firstArr = responseText.indexOf('[');
-      if (firstArr < 0) return regexFallback();
-      let depth = 0, end = -1;
-      for (let i = firstArr; i < responseText.length; i++) {
-        if (responseText[i] === '[') depth++;
-        else if (responseText[i] === ']') { depth--; if (depth === 0) { end = i + 1; break; } }
-      }
-      if (end < 0) return regexFallback();
-      const offers = JSON.parse(responseText.substring(firstArr, end)).filter(o => o.name && o.price > 0);
-      if (offers.length > 0) console.log(`  🌐 ${providerKey} ${storeKey}: ${offers.length} offers (fallback)`);
-      return offers.map(o => ({ ...o, store: storeKey }));
-    } catch (e) {
-      console.warn(`  ⚠️ LLM-fallback ${storeKey}: ${e.message}`);
-    }
-  }
-
-  return regexFallback();
-}
-
-// ============================================================
-// FLIPBOOK SCRAPER (NORMA)
-// ============================================================
-async function scrapeFlipbook(storeKey, url) {
-  let browser = null;
-  
-  try {
-    browser = await firefox.launch({ headless: true, args: ['--headless'] });
-    const page = await browser.newPage();
-    await page.setViewportSize({ width: 1920, height: 1080 });
-    
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-    await page.waitForTimeout(5000);
-    
-    try {
-      const btn = await page.$('button:has-text("Alle akzeptieren"), button:has-text("Accept")');
-      if (btn) await btn.click();
-      await page.waitForTimeout(1000);
-    } catch {}
-    
-    const allImages = new Set();
-    const getImages = async () => {
-      return await page.$$eval('img', els =>
-        els.filter(e => e.src && e.naturalWidth > 100)
-           .map(e => e.src)
-      );
-    };
-    
-    let imgs = await getImages();
-    imgs.forEach(src => allImages.add(src));
-    
-    for (let attempt = 0; attempt < 6; attempt++) {
-      const nextBtn = await page.$('button[class*="next"], button[class*="forward"], [class*="slide"]:not([class*="current"])');
-      if (nextBtn) {
-        await nextBtn.click();
-        await page.waitForTimeout(1500);
-        imgs = await getImages();
-        imgs.forEach(src => allImages.add(src));
-      }
-    }
-    
-    await browser.close();
-    
-    console.log(`  📄 ${storeKey}: ${allImages.size} images for OCR`);
-    
-    const allOffers = [];
-    for (const src of [...allImages].slice(0, 5)) {
-      const ocrText = await ocrImage(src);
-      if (ocrText && ocrText.length > 20) {
-        const offers = await parseWithOllama(ocrText, storeKey);
-        if (offers) allOffers.push(...offers);
-      }
-    }
-    
-    const seen = new Set();
-    return allOffers.filter(o => {
-      const key = `${o.name.toLowerCase()}|${o.price}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-  } catch (e) {
-    console.warn(`  ⚠️ Flipbook ${storeKey}: ${e.message}`);
-    if (browser) await browser.close().catch(() => {});
-    return [];
-  }
-}
-
 // ============================================================
 // NORMA HTML SCRAPER — replaces flipbook+OCR for NORMA.
 // NORMA's /de/angebote/ landing page lists current-week category URLs
@@ -817,624 +268,6 @@ function parseNormaPage(html, storeKey) {
 
   return offers;
 }
-
-// ============================================================
-// PLAYWRIGHT SCRAPER with scrolling
-// ============================================================
-async function scrapeWithBrowser(storeKey, url, options = {}) {
-  const {
-    browser: browserType = 'chromium',
-    waitUntil = 'domcontentloaded',
-    timeout = 30000,
-    selectors = null,
-    scrollWait = 800,
-    scrollIterations = 8,
-    extractName = null,
-    extractPrice = null,
-    extractOfferId = null,
-    preFlow = null,
-    useStealth = false
-  } = options;
-  
-  let browser = null;
-  
-  try {
-    const launchOpts = {
-      chromium: { 
-        headless: true, 
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-blink-features=AutomationDetection'] 
-      },
-      firefox: { 
-        // Headless: true is required in Docker / server environments (no X server).
-        // Use 'new' headless mode for better compatibility with modern sites.
-        headless: true, 
-        args: ['--disable-blink-features=AutomationDetection'] 
-      }
-    };
-
-    browser = browserType === 'firefox' ? await firefox.launch(launchOpts.firefox) : await chromium.launch(launchOpts.chromium);
-    
-    const context = await browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      userAgent: browserType === 'firefox'
-        ? 'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/109.0'
-        : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      extraHTTPHeaders: { 'Accept-Language': 'de-DE,de;q=0.9' }
-    });
-    
-    const page = await context.newPage();
-    
-    // Apply stealth for Firefox
-    if (useStealth && browserType === 'firefox') {
-      await page.addInitScript({
-        content: `Object.defineProperty(navigator, 'webdriver', { get: () => false });`
-      });
-    }
-    
-    await page.goto(url, { waitUntil, timeout });
-    await page.waitForTimeout(2500);
-    
-    // Run preFlow if defined (for multi-step flows like Netto)
-    if (typeof preFlow === 'function') {
-      console.log(`  🔐 Running preFlow for ${storeKey}...`);
-      await preFlow(page);
-    }
-    
-    // Scroll with fixed wait (no networkidle)
-    for (let i = 1; i <= scrollIterations; i++) {
-      await page.evaluate((y) => window.scrollTo(0, y), i * 2000);
-      await page.waitForTimeout(scrollWait);
-    }
-    
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(300);
-    
-    const html = await page.content();
-    const customExtractors = {};
-    if (typeof extractName === 'function') customExtractors.extractName = extractName;
-    if (typeof extractPrice === 'function') customExtractors.extractPrice = extractPrice;
-    if (typeof extractOfferId === 'function') customExtractors.extractOfferId = extractOfferId;
-    if (typeof extractOriginalPrice === 'function') customExtractors.extractOriginalPrice = extractOriginalPrice;
-    const offers = parseCheerio(html, storeKey, selectors, Object.keys(customExtractors).length > 0 ? customExtractors : null);
-    
-    await browser.close();
-    return offers;
-  } catch (e) {
-    if (browser) await browser.close().catch(() => {});
-    return [];
-  }
-}
-
-// ============================================================
-// ALDI API SCRAPER
-// ============================================================
-async function scrapeAldiApi(storeKey, storeUrl) {
-  let browser = null;
-  
-  try {
-    browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] });
-    const page = await browser.newPage();
-    await page.setExtraHTTPHeaders({ 'Accept-Language': 'de-DE,de;q=0.9' });
-    // User agent set via context options instead
-    
-    // Navigate to establish session/cookies
-    await page.goto(storeUrl, { waitUntil: 'networkidle', timeout: 25000 });
-    await page.waitForTimeout(2000);
-    
-    // Get the servicePoint from page context or use default B384
-    const servicePoint = await page.evaluate(async () => {
-      // Try to find servicePoint in localStorage or window state
-      try {
-        // Look for ALDI store/session data
-        const nuxt = window.__NUXT__;
-        if (nuxt && nuxt.config && nuxt.config.public) {
-          return nuxt.config.public.SERVICE_POINT_ID || 'B384';
-        }
-      } catch(e) {}
-      return 'B384';
-    }).catch(() => 'B384');
-    
-    // Get the category tree to know which categories to scrape
-    const categoryData = await page.evaluate(async (sp) => {
-      const resp = await fetch(`https://api.aldi-sued.de/v2/product-category-tree?serviceType=walk-in&servicePoint=${sp}`);
-      if (!resp.ok) return null;
-      return await resp.json();
-    }, servicePoint).catch(() => null);
-    
-    await browser.close();
-    browser = null;
-    
-    if (!categoryData || !categoryData.data) {
-      console.warn(`  ⚠️ ${storeKey}: could not get category tree`);
-      return [];
-    }
-    
-    // Skip non-food categories
-    const skipNames = [
-      'Garten', 'Küche & Backen', 'Outdoor & Freizeit', 'Grills & Grillzubehör', 'Heimwerken',
-      'Technik & Elektronik', 'Autozubehör', 'Bettwäsche & Heimtextilien', 'Kleidung',
-      'Schreibwaren', 'Wellness & Spa', 'Einrichtung & Wohnen', 'Spielzeug',
-      'Basteln & DIY', 'Camping', 'Blumen & Blumensträuße', 'ALDImania', 'Muttertag',
-      'Sport & Fitness', 'Tierbedarf', 'Drogerie & Kosmetik', 'Haushaltsartikel',
-      'Babyartikel', 'Urlaub & Strand'
-    ];
-    
-    const foodCategoryKeys = [];
-    function extractFoodCategories(categories) {
-      for (const cat of categories) {
-        const isFood = !skipNames.some(s => cat.name.includes(s));
-        if (isFood) {
-          foodCategoryKeys.push(cat.key);
-        }
-        if (cat.children && cat.children.length > 0) {
-          extractFoodCategories(cat.children);
-        }
-      }
-    }
-    extractFoodCategories(categoryData.data);
-    
-    console.log(`  🍎 ${storeKey}: scraping ${foodCategoryKeys.length} food categories via API`);
-    
-    const allOffers = [];
-    const seen = new Set();
-    
-    // Scrape each food category with pagination
-    for (const catKey of foodCategoryKeys) {
-      const catOffers = await fetchAldiCategoryWithPagination(servicePoint, catKey);
-      
-      for (const offer of catOffers) {
-        // Dedupe by name+price
-        const key = `${offer.name.toLowerCase()}|${offer.price}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          allOffers.push({ ...offer, store: storeKey });
-        }
-      }
-      
-      process.stdout.write(`\r  🍎 ${storeKey}: ${allOffers.length} offers collected (${foodCategoryKeys.indexOf(catKey) + 1}/${foodCategoryKeys.length} categories)`);
-    }
-    
-    console.log(`\n  📋 ${storeKey}: ${allOffers.length} offers via ALDI API`);
-    return allOffers;
-    
-  } catch (e) {
-    console.warn(`  ⚠️ ${storeKey}: ${e.message}`);
-    if (browser) await browser.close().catch(() => {});
-    return [];
-  }
-}
-
-async function fetchAldiCategoryWithPagination(servicePoint, categoryKey, limit = 100) {
-  const offers = [];
-  
-  try {
-    for (let offset = 0; offset < 500; offset += limit) {
-      const url = `https://api.aldi-sued.de/v3/product-search?currency=EUR&serviceType=walk-in&categoryKey=${categoryKey}&limit=${limit}&offset=${offset}&servicePoint=${servicePoint}`;
-      
-      const resp = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-          'Accept': 'application/json',
-          'Accept-Language': 'de-DE,de;q=0.9'
-        },
-        signal: AbortSignal.timeout(20000)
-      });
-      
-      if (!resp.ok) break;
-      
-      const data = await resp.json();
-      const items = data.data || [];
-      const total = data.meta?.pagination?.totalCount;
-      
-      for (const p of items) {
-        // Skip non-food items
-        const skipWords = ['Spülmaschinen', 'Waschmaschine', 'Staubsauger', 'Möbel', 'Werkzeug', 'Spielzeug', 'Badewanne', 'Kissen', 'Vorhang', 'Decke'];
-        if (skipWords.some(w => p.name.toLowerCase().includes(w))) continue;
-        
-        // Skip not-for-sale items
-        if (p.notForSale) continue;
-        
-        const priceAmount = p.price?.amount;
-        if (!priceAmount || priceAmount <= 0 || priceAmount >= 200) continue;
-        
-        const originalPriceAmount = p.price?.comparison || null;
-        
-        offers.push({
-          name: p.name.trim().substring(0, 80),
-          price: priceAmount / 100,  // ALDI returns prices in cents
-          original_price: originalPriceAmount ? originalPriceAmount / 100 : null
-        });
-      }
-      
-      if (items.length < limit || offers.length >= total) break;
-    }
-  } catch (e) {
-    console.warn(`    ⚠️ Category ${categoryKey}: ${e.message}`);
-  }
-  
-  return offers;
-}
-
-// ============================================================
-// EDEKA API SCRAPER
-// ============================================================
-async function scrapeEdekaApi(storeKey, url) {
-  let browser = null;
-  
-  try {
-    browser = await firefox.launch({ headless: true, args: ['--disable-blink-features=AutomationDetection'] });
-    const page = await browser.newPage();
-    await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.setExtraHTTPHeaders({ 'Accept-Language': 'de-DE,de;q=0.9' });
-    
-    // Navigate to the offers page first to establish session/cookies
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(2000);
-    
-    // Accept cookies if present
-    try {
-      const cookieBtn = await page.$('button:has-text("Alle akzeptieren")');
-      if (cookieBtn) {
-        await cookieBtn.click();
-        await page.waitForTimeout(1500);
-      }
-    } catch(e) {}
-    
-    // Discover the actual market ID from the page
-    let marketId = EDEKA_MARKET_ID;
-    try {
-      // Try to get market ID from page state
-      const extracted = await page.evaluate(() => {
-        // Try __NEXT_DATA__ or similar hydration state
-        const nextData = document.getElementById('__NEXT_DATA__');
-        if (nextData) {
-          try {
-            const parsed = JSON.parse(nextData.textContent);
-            // Walk the object looking for marketId/storeId
-            const str = JSON.stringify(parsed);
-            const m = str.match(/"marketId"\s*:\s*(\d+)/);
-            if (m) return m[1];
-            const s = str.match(/"storeNumber"\s*:\s*"?(\d+)"?/);
-            if (s) return s[1];
-          } catch(e) {}
-        }
-        // Try window state
-        const stateMatch = document.body.innerText.match(/Markt-Nr\.?\s*[:.]?\s*(\d{5,})/);
-        if (stateMatch) return stateMatch[1];
-        return null;
-      });
-      if (extracted) {
-        marketId = extracted;
-        console.log(`  📍 ${storeKey}: discovered market ID: ${marketId}`);
-      }
-    } catch(e) { console.warn(`  ⚠️ Market discovery: ${e.message}`); }
-
-    // Call the internal API that the page uses
-    // Use market ID from config for regional offers
-    const apiUrl = `https://www.edeka.de/api/auth-proxy/?path=api%2Foffers%3Flimit%3D999&storeNumber=${marketId}`;
-    
-    const apiResponse = await page.evaluate(async (apiUrl) => {
-      try {
-        const resp = await fetch(apiUrl);
-        if (resp.ok) {
-          const json = await resp.json();
-          return JSON.stringify(json);
-        }
-        return null;
-      } catch(e) {
-        return null;
-      }
-    }, apiUrl);
-    
-    await browser.close();
-    
-    if (!apiResponse) {
-      console.warn(`  ⚠️ ${storeKey}: API returned no data`);
-      return [];
-    }
-    
-    const data = JSON.parse(apiResponse);
-    const offersRaw = data.offers || [];
-    
-    const offers = [];
-    const seen = new Set();
-    
-    for (const item of offersRaw) {
-      if (!item.title || !item.price) continue;
-      
-      // Skip non-food items
-      const skipWords = ['Spülmaschinen', 'Waschmaschine', 'Staubsauger', 'Möbel', 'Werkzeug', 'Spielzeug', 'Drogerie'];
-      if (skipWords.some(w => item.title.toLowerCase().includes(w))) continue;
-      
-      const price = typeof item.price === 'object' ? item.price.rawValue : parseFloat(item.price);
-      if (!price || price <= 0 || price >= 200) continue;
-      
-      // Build name: title + first description
-      let name = item.title.trim();
-      if (item.descriptions && item.descriptions.length > 0) {
-        const desc = item.descriptions[0];
-        if (desc && desc.length > 2 && desc.length < 80) {
-          name = `${name} ${desc}`;
-        }
-      }
-      name = name.substring(0, 80);
-      
-      const key = `${name.toLowerCase()}|${price}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      
-      offers.push({
-        name,
-        price,
-        store: storeKey
-      });
-    }
-    
-    console.log(`  📋 ${storeKey}: ${offers.length} offers via API`);
-    return offers;
-    
-  } catch (e) {
-    console.warn(`  ⚠️ ${storeKey}: ${e.message}`);
-    if (browser) await browser.close().catch(() => {});
-    return [];
-  }
-}
-
-
-// ============================================================
-// MARKTGURU SCRAPER - Scrapes marktguru.de for multiple stores
-// ============================================================
-
-// Stores discovered on marktguru.de
-// Build MARKTGURU_STORES from config (filtered to only enabled stores)
-const MARKTGURU_STORES = MARKTGURU_STORE_CONFIG
-  .filter(storeKey => MARKTGURU_STORE_URLS[storeKey] && !STORE_EXCLUDED(storeKey))
-  .map(storeKey => ({ store: storeKey, ...MARKTGURU_STORE_URLS[storeKey] }));
-
-// Also track excluded marktguru stores count for the scraper status
-const MARKTGURU_EXCLUDED_COUNT = MARKTGURU_STORE_CONFIG
-  .filter(s => STORE_EXCLUDED(s)).length;
-
-async function scrapeMarktguruStore(page, storeInfo) {
-  const { store, name, url } = storeInfo;
-  
-  try {
-    // Accept cookies if present - be more specific
-    try {
-      const btn = await page.waitForSelector('button:has-text("Akzeptieren"), button:has-text("Alles akzeptieren"), button[id*="cookie"]', { timeout: 5000 }).catch(() => null);
-      if (btn) { await btn.click(); await page.waitForTimeout(2000); }
-    } catch(e) {}
-    
-    // Wait longer for JS to render initial offers
-    await page.waitForTimeout(8000);
-    
-    // Try clicking "Mehr angebote" button to load ALL offers (many clicks needed)
-    for (let click = 0; click < 50; click++) {
-      try {
-        const moreBtn = await page.$('button.more-btn');
-        if (!moreBtn) break;
-        await moreBtn.click({ force: true });
-        await page.waitForTimeout(1500);
-        const count = await page.evaluate(() => document.querySelectorAll('ul.offer-list li.offer-list-item').length);
-        process.stdout.write(`\r  ${name}: ${count} items loaded...`);
-        // Stop if we have enough items (e.g., > 500)
-        if (count >= 500) break;
-      } catch(e) { break; }
-    }
-    console.log(`\r  ${name}: Done loading offers`);
-    
-    // Extract offers using structured HTML elements (NOT text parsing)
-    const offers = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('ul.offer-list li.offer-list-item'));
-      return items.map(item => {
-        const name = item.querySelector('h3')?.innerText?.trim() || '';
-        const brand = item.querySelector('dd.brand')?.innerText?.trim() || '';
-        const priceEl = item.querySelector('dd.price .price');
-        const priceText = priceEl?.innerText?.replace(/[€\s]/g, '').replace(',', '.') || '';
-        const price = parseFloat(priceText);
-        const unitPrice = item.querySelector('div.info strong')?.innerText?.trim() || '';
-        // Get offer ID from image URL (contains /offers/{id}/images/)
-        const img = item.querySelector('img');
-        let offerId = '';
-        if (img && img.src) {
-          const m = img.src.match(/\/offers\/(\d+)\//);
-          if (m) offerId = m[1];
-        }
-        const link = item.querySelector('a[href*="/offers/"]');
-        
-        return { name, brand, price, originalPrice: null, unitPrice, offerId, url: offerId ? 'https://www.marktguru.de/offers/' + offerId : '' };
-      }).filter(o => o.price > 0 && o.name.length > 2);
-    });
-    
-    return offers;
-    
-  } catch (e) {
-    console.warn(`  ⚠️ ${name}: ${e.message}`);
-    return [];
-  }
-}
-
-async function scrapeAllMarktguruStores() {
-  if (currentScrapePromise) throw new Error('Ein Scrape läuft bereits');
-  currentScrapePromise = (async () => {
-  console.log('\n📍 Scraping marktguru.de stores...');
-  const results = {};
-  if (MARKTGURU_EXCLUDED_COUNT > 0) {
-    console.log(`⏭️  ${MARKTGURU_EXCLUDED_COUNT} marktguru stores excluded`);
-  }
-  
-  const browser = await firefox.launch({ 
-    headless: true,
-    args: ['--disable-blink-features=AutomationDetection'] 
-  });
-  
-  for (const storeInfo of MARKTGURU_STORES) {
-    const context = await browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/109.0'
-    });
-    
-    const page = await context.newPage();
-    await page.addInitScript({
-      content: `Object.defineProperty(navigator, 'webdriver', { get: () => false });`
-    });
-    
-    try {
-      await page.goto(storeInfo.url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      const offers = await scrapeMarktguruStore(page, storeInfo);
-      
-      // Normalize offers to include proper marktguru offer URLs
-      results[storeInfo.store] = offers.map(o => ({
-        name: o.name,
-        price: o.price,
-        original_price: o.originalPrice,
-        url: o.url || (o.offerId ? `https://www.marktguru.de/offers/${o.offerId}` : storeInfo.url),
-        offer_id: o.offerId,
-        source_url: storeInfo.url,
-        store: storeInfo.store,
-        source: 'marktguru'
-      }));
-      
-      console.log(`  ✅ ${storeInfo.name}: ${results[storeInfo.store].length} offers`);
-      
-    } catch(e) {
-      console.log(`  ❌ ${storeInfo.name}: ${e.message.split('\n')[0]}`);
-      results[storeInfo.store] = [];
-    }
-    
-    await context.close();
-  }
-  
-  await browser.close();
-
-  const totalOffers = Object.values(results).reduce((s, a) => s + a.length, 0);
-  const active = Object.values(results).filter(a => a.length > 0).length;
-  const total = MARKTGURU_STORES.length;  // Total configured Marktguru stores
-  const marktguruStart = Date.now() - 60000; // Approximate: scraped for ~1 min
-  const durationS = ((Date.now() - marktguruStart) / 1000).toFixed(1);
-  console.log(`✅ marktguru: ${totalOffers} total offers from ${active} stores in ${durationS}s\n`);
-
-  setProgress({
-    stage: 'done', status: 'done',
-    message: `${totalOffers} Marktguru-Angebote von ${active}/${total} Stores in ${durationS}s`,
-    source: 'marktguru',
-    progress: 100, currentStore: total, totalStores: total,
-    stats: { totalOffers, activeStores: active, totalStores: total, durationS }
-  });
-
-  return results;
-  })();
-  try {
-    return await currentScrapePromise;
-  } finally {
-    currentScrapePromise = null;
-  }
-}
-function parseCheerio(html, storeKey, customSelectors = null, customExtractors = null) {
-  if (!html) return [];
-  
-  const customNameExtractor = customExtractors?.extractName || null;
-  const customPriceExtractor = customExtractors?.extractPrice || null;
-  const customIdExtractor = customExtractors?.extractOfferId || null;
-  
-  const $ = cheerio.load(html);
-  const offers = [];
-  const seenIds = customIdExtractor ? new Set() : null;
-  const seenTexts = new Set();
-  
-  const defaultSelectors = [
-    '[data-testid="product-tile"]', '[class*="product-tile"]', '[class*="offer-tile"]',
-    '[class*="cor-offer-renderer-tile"]', 'article[class*="product"]', '[class*="odsc-tile"]',
-    '[class*="product"][class*="item"]', '[class*="offer"][class*="item"]', 'article[class*="offer"]',
-  ];
-  
-  const selectors = customSelectors || defaultSelectors;
-  
-  for (const selector of selectors) {
-    $(selector).each((_, el) => {
-      const $el = $(el);
-      const text = $el.text().trim();
-      if (!text || seenTexts.has(text)) return;
-      
-      let price = null;
-      let original_price = null;
-      if (customPriceExtractor) {
-        price = customPriceExtractor($, el);
-      }
-      if (!price) {
-        const priceMatch = text.match(/(\d+[.,]\d{2})\s*[€]?/);
-        if (priceMatch) price = parseFloat(priceMatch[1].replace(',', '.'));
-      }
-      // Extract original price if custom extractor exists
-      if (customExtractors?.extractOriginalPrice) {
-        original_price = customExtractors.extractOriginalPrice($, el);
-      }
-      if (price && price > 0 && price < 200) {
-          let name = '';
-          
-          // Get offer ID for dedup if available
-          const offerId = customIdExtractor ? customIdExtractor($, el) : null;
-          
-          // Get name
-          if (customNameExtractor) {
-            name = customNameExtractor($, el);
-          }
-          if (!name || name.length < 2) {
-            name = $el.find('h3, h4, h5, .name, .title, [class*="name"], [class*="product-name"], .odsc-tile__headline').first().text().trim() ||
-                     $el.find('img').attr('alt') ||
-                     $el.find('a[class*="tile__link"]').text().trim() || '';
-          }
-          
-          if (!name || name.length < 2 || name.length > 120) return;
-          
-          // Skip if we've seen this ID (for stores that have the same offer ID)
-          if (offerId && seenIds.has(offerId)) return;
-          if (offerId) seenIds.add(offerId);
-          
-          name = name.replace(/\*/g, '').trim().substring(0, 80);
-          seenTexts.add(text);
-          offers.push({ name, price, original_price, store: storeKey });
-      }
-    });
-    if (offers.length > 20) break;
-  }
-  
-  // Generic fallback
-  if (offers.length < 5) {
-    $('[class*="product"], [class*="offer"], article, .item, [data-testid*="product"], a[href*="/p/"]').each((_, el) => {
-      const $el = $(el);
-      const text = $el.text().trim();
-      if (!text || seenTexts.has(text)) return;
-      
-      const priceMatch = text.match(/(\d+[.,]\d{2})\s*[€]?/);
-      if (priceMatch) {
-        const price = parseFloat(priceMatch[1].replace(',', '.'));
-        if (price && price > 0 && price < 200) {
-          const name = $el.find('h3, h4, .name, .title, [class*="name"]').first().text().trim() ||
-                       $el.find('img').attr('alt') || '';
-          if (name && name.length > 2 && name.length < 120) {
-            seenTexts.add(text);
-            offers.push({ name: name.replace(/\*/g, '').trim().substring(0, 80), price, store: storeKey });
-          }
-        }
-      }
-    });
-  }
-  
-  // Dedupe by name+price
-  const unique = [];
-  const seen = new Set();
-  for (const o of offers) {
-    const key = `${o.name}|${o.price}`;
-    if (!seen.has(key)) { seen.add(key); unique.push(o); }
-  }
-  
-  return unique
-}
-
-// ============================================================
-// FETCH
-// ============================================================
 async function fetchWithRetry(url, retries = 2) {
   for (let i = 0; i <= retries; i++) {
     try {
@@ -1455,96 +288,6 @@ async function fetchWithRetry(url, retries = 2) {
   }
   return null;
 }
-
-// ============================================================
-// MAIN SCRAPER
-// ============================================================
-async function scrapeAllStores() {
-  if (currentScrapePromise) throw new Error('Ein Scrape läuft bereits');
-  currentScrapePromise = (async () => {
-  console.log('🔍 Scraping all stores...');
-  const results = {};
-  const storeKeys = Object.keys(STORES).filter(k => !STORE_EXCLUDED(k));
-  const storeCount = storeKeys.length;
-  if (storeCount < Object.keys(STORES).length) {
-    console.log(`⏭️  Skipping ${Object.keys(STORES).length - storeCount} excluded stores: ${Object.keys(STORES).filter(k => STORE_EXCLUDED(k)).join(', ')}`);
-  }
-  const startTime = Date.now();
-
-  for (let i = 0; i < storeKeys.length; i++) {
-    const key = storeKeys[i];
-    const store = STORES[key];
-    const cfg = SCRAPE_CONFIG[key] || {};
-
-    // Emit progress: store started
-    setProgress({
-      stage: 'fetching',
-      status: 'running',
-      message: `Lade ${store.name} (${i + 1}/${storeCount})...`,
-      progress: Math.round((i / storeCount) * 100),
-      currentStore: i + 1,
-      totalStores: storeCount,
-      currentStoreName: store.name,
-      source: 'direkt'
-    });
-
-    if (cfg.useApi) {
-      console.log(`  📋 ${key}: fetching via API...`);
-      results[key] = await scrapeEdekaApi(key, store.url);
-    } else if (cfg.handler === 'normaHtml') {
-      console.log(`  📋 ${key}: fetching weekly HTML pages...`);
-      results[key] = await scrapeNormaHtml(key, store.url);
-    } else if (cfg.isFlipbook && USE_OCR) {
-      console.log(`  📄 ${key}: flipbook+OCR...`);
-      results[key] = await scrapeFlipbook(key, store.url);
-    } else {
-      results[key] = await scrapeWithBrowser(key, store.url, {
-        browser: cfg.browser,
-        waitUntil: cfg.waitUntil || 'domcontentloaded',
-        timeout: cfg.timeout || 30000,
-        selectors: cfg.selectors,
-        scrollWait: cfg.scrollWait || 800,
-        scrollIterations: cfg.scrollIterations || 8,
-        extractName: cfg.extractName || null,
-        extractPrice: cfg.extractPrice || null,
-        extractOfferId: cfg.extractOfferId || null,
-        extractOriginalPrice: cfg.extractOriginalPrice || null,
-        preFlow: cfg.preFlow || null,
-        useStealth: cfg.useStealth || false
-      });
-    }
-    console.log(`  ✅ ${key}: ${results[key].length} offers`);
-  }
-
-  // Final progress update
-  const total = Object.values(results).reduce((s, a) => s + a.length, 0);
-  const active = Object.values(results).filter(a => a.length > 0).length;
-  const durationS = ((Date.now() - startTime) / 1000).toFixed(1);
-
-  setProgress({
-    stage: 'done',
-    status: 'done',
-    message: `${total} Angebote von ${active}/${storeCount} Stores`,
-    progress: 100,
-    currentStore: storeCount,
-    totalStores: storeCount,
-    stats: { totalOffers: total, activeStores: active, totalStores: storeCount, durationS },
-    source: 'direkt'
-  });
-
-  cachedOffers = results;
-  lastUpdated = new Date().toISOString();
-
-  console.log(`✅ ${total} offers from ${active}/${storeCount} stores`);
-  return results;
-  })();
-  try {
-    return await currentScrapePromise;
-  } finally {
-    currentScrapePromise = null;
-  }
-}
-
 // ============================================================
 // FUZZY MATCHING
 // ============================================================
@@ -1676,7 +419,7 @@ function hydrateOffersFromHistory({ waveWindowMs = 15 * 60 * 1000 } = {}) {
       SELECT h.store, h.product_name, h.price, h.url, h.original_price,
              h.offer_id, h.source_url, h.scraped_at,
              h.brand, h.valid_from, h.valid_to, h.discount_percent, h.old_price_source,
-             h.unit_price, h.unit, h.category, h.description
+             h.unit_price, h.unit, h.category, h.description, h.category_label, h.diet_tag, h.off_code
       FROM offer_history h
       WHERE h.scrape_id IN (${ids.map(() => '?').join(',')})
       ORDER BY h.store, h.product_name
@@ -1705,6 +448,10 @@ function hydrateOffersFromHistory({ waveWindowMs = 15 * 60 * 1000 } = {}) {
         unit: row.unit || null,
         category: row.category || null,
         description: row.description || null,
+        category_label: row.category_label || null,
+        diet_tag: row.diet_tag || null,
+        is_food: row.category ? !['nonfood', 'drogerie-haushalt'].includes(row.category) : true,
+        off_code: row.off_code || null,
         upcoming: row.valid_from ? Date.parse(row.valid_from) > Date.now() : false,
       });
       if (!newest || row.scraped_at > newest) newest = row.scraped_at;
@@ -1958,7 +705,7 @@ async function scrapeAllSources(source = 'marktguru') {
       });
       try {
         const history = historyLookupFor('norma');
-        const offers = await scrapeNormaHtml('norma', STORES.norma.url);
+        const offers = await scrapeNormaHtml('norma', NORMA_URL);
         let fromHistory = 0;
         for (const o of offers) {
           if (applyHistoryFallback(o, history)) fromHistory++;
@@ -2014,6 +761,50 @@ async function scrapeAllSources(source = 'marktguru') {
       }
     }
 
+    // Warengruppen + Ernährungs-Tags (Heuristik, offline) für alle Quellen
+    let dietCounts = { vegan: 0, vegetarisch: 0, fleisch: 0 };
+    let categoryCounts = {};
+    let offMatches = 0;
+    let offCached = 0;
+    for (const offers of Object.values(byStore)) {
+      for (const o of offers) {
+        const c = classifyOffer(o);
+        o.category = c.category;
+        o.category_label = c.categoryLabel;
+        o.diet_tag = c.diet;
+        o.is_food = c.isFood;
+
+        // Open-Food-Facts: Produkt matchen (offline, FTS) und Kategorien/Tags nutzen, wo sie helfen
+        const match = offLookup.findMatch(o.name, o.brand, { minScore: 0.6 });
+        if (match) {
+          o.off_code = match.code;
+          o.off_score = match.score;
+          offMatches++;
+          const offCat = offLookup.categoryFromOffCategories(match.categoriesEn);
+          if (offCat && (o.category === 'sonstiges' || (offCat === 'nonfood' && o.category !== 'nonfood' && match.score >= 0.8))) {
+            o.category = offCat;
+            o.category_label = (require('./offerClassifier.cjs').CATEGORIES[offCat]) || o.category_label;
+            o.is_food = !['nonfood', 'drogerie-haushalt'].includes(offCat);
+            o.category_source = 'off';
+          }
+          // Gecachte OFF-Tags schlagen die Heuristik (nur bei sicherem Match mit ≥2 Wortüberschneidungen)
+          if (match.score >= 0.8 && (match.overlap >= 2 || match.score >= 0.99)) {
+            const offDiet = offLookup.dietFromCachedAnalysis(match.code);
+            if (offDiet === 'vegan') { o.diet_tag = 'vegan'; o.diet_source = 'off'; offCached++; }
+            else if (offDiet === 'vegetarisch' && o.diet_tag !== 'vegan') { o.diet_tag = 'vegetarisch'; o.diet_source = 'off'; offCached++; }
+          }
+        }
+
+        categoryCounts[o.category] = (categoryCounts[o.category] || 0) + 1;
+        if (o.diet_tag && dietCounts[o.diet_tag] !== undefined) dietCounts[o.diet_tag]++;
+      }
+    }
+    stats.categories = categoryCounts;
+    stats.diet = dietCounts;
+    console.log(`  🏷️  Warengruppen: ${Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} ${n}`).join(', ')}`
+      + ` | vegan ${dietCounts.vegan}, vegetarisch ${dietCounts.vegetarisch}, Fleisch/Fisch ${dietCounts.fleisch}`);
+    console.log(`  🧾 OFF-Matching: ${offMatches} Produkte erkannt, davon ${offCached} mit gecachten Vegan-/Vegetarisch-Tags`);
+
     cachedOffers = byStore;
     lastUpdated = new Date().toISOString();
     const durationMs = Date.now() - startTime;
@@ -2047,19 +838,10 @@ async function scrapeAllSources(source = 'marktguru') {
   }
 }
 
-process.on('exit', async () => { 
-  try { 
-    if (tesseractWorker) {
-      await tesseractWorker.terminate();
-      tesseractWorker = null;
-    }
-  } catch {} 
-});
-
 module.exports = {
   getProgress,
   hydrateOffersFromHistory, scrapeAndPersist,
   scrapeAllSources, getApiRetailers, getKaufdaStores, storeDisplayName,
   DEFAULT_API_STORES, DEFAULT_KAUFDA_STORES, mergeKaufdaOffers,
-  // Legacy (Phase C räumt die Browser-/OCR-Pfade ab):
-  scrapeAllStores, scrapeAllMarktguruStores, getOffers, matchItemsToOffers, MARKTGURU_STORES };
+  getOffers, matchItemsToOffers,
+};

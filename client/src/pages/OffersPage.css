@@ -146,6 +146,34 @@
   color: var(--color-accent);
 }
 
+/* Warengruppen-Zeile: etwas kleiner, damit sie sich von den Markt-Chips abhebt */
+.offers-cats {
+  margin-top: -0.7rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed var(--color-border);
+}
+
+.offers-chip-cat {
+  background: #fffdf8;
+  border-color: var(--color-sepia);
+  font-size: 0.8rem;
+  padding: 0.28rem 0.6rem;
+}
+
+.offers-chip-cat.is-active {
+  background: var(--color-green);
+  border-color: var(--color-green);
+  color: #fff;
+}
+
+.offer-diet {
+  font-weight: 600;
+}
+
+.offer-diet-vegan { color: var(--color-green); }
+.offer-diet-vegetarisch { color: #a06a00; }
+.offer-diet-fleisch { color: #9b3b2f; }
+
 .offers-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
